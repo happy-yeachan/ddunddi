@@ -53,7 +53,7 @@ export default function Gate() {
 
   function pick(id: string) {
     localStorage.setItem(ME_KEY, id);
-    router.replace("/calendar");
+    router.replace("/us");
   }
 
   if (step === "checking") {
