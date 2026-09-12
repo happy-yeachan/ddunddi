@@ -16,6 +16,18 @@ if (!url) {
   process.exit(1);
 }
 
+// Direct connection 은 IPv6 전용이라 대개 연결되지 않는다. 호스트만 보고
+// 미리 걸러 준다. 에러 메시지만으로는 원인을 알아보기 어렵다.
+if (!/pooler\.supabase\.com/.test(url)) {
+  console.error(
+    "SUPABASE_DB_URL 이 Direct connection 입니다. Session pooler 문자열로 바꾸세요.\n" +
+      "  Direct        db.<ref>.supabase.co:5432        사용자 postgres\n" +
+      "  Session pooler aws-....pooler.supabase.com:5432 사용자 postgres.<ref>\n" +
+      "Supabase → 상단 Connect → Connection String → Session pooler"
+  );
+  process.exit(1);
+}
+
 const sql = await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8");
 
 const client = new pg.Client({
@@ -44,6 +56,9 @@ try {
 } catch (e) {
   await client.query("rollback").catch(() => {});
   console.error("적용 실패 — 아무것도 바뀌지 않았습니다.\n", e.message);
+  if (e.code === "EHOSTUNREACH" || e.code === "ENETUNREACH") {
+    console.error("연결 자체가 안 됩니다. Session pooler 문자열인지 다시 확인하세요.");
+  }
   process.exitCode = 1;
 } finally {
   await client.end();
