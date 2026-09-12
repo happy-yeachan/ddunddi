@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 import { GATE_KEY, readMe } from "@/lib/me";
 
 const TABS = [
-  { href: "/calendar", label: "캘린더" },
   { href: "/us", label: "우리" },
+  { href: "/calendar", label: "캘린더" },
   { href: "/poke", label: "찌르기" },
 ];
 
@@ -35,7 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 border-t border-[#f5d0da] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <div className="mx-auto grid max-w-md grid-cols-3">
           {TABS.map((t) => {
-            const active = pathname === t.href;
+            const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
             return (
               <Link
                 key={t.href}

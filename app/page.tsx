@@ -17,7 +17,7 @@ export default function Gate() {
   useEffect(() => {
     const passed = localStorage.getItem(GATE_KEY) === "ok";
     if (passed && readMe()) {
-      router.replace("/calendar");
+      router.replace("/us");
       return;
     }
     setStep(passed ? "who" : "password");
@@ -53,7 +53,7 @@ export default function Gate() {
 
   function pick(id: string) {
     localStorage.setItem(ME_KEY, id);
-    router.replace("/calendar");
+    router.replace("/us");
   }
 
   if (step === "checking") {

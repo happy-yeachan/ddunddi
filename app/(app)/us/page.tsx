@@ -1,120 +1,107 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { nameOf, PEOPLE, readMe, type PersonId } from "@/lib/me";
-import { loadProfile, saveProfile, uploadProfilePhoto, type Profile } from "@/lib/profiles";
+import { addDays, addYears, differenceInCalendarDays, format, parseISO, startOfDay } from "date-fns";
+import { nameOf, readMe, type PersonId } from "@/lib/me";
+import { loadProfile, type Profile } from "@/lib/profiles";
+import { loadRelationshipDate } from "@/lib/settings";
 import { photoUrl } from "@/lib/supabase";
-import { loadRelationshipDate, saveRelationshipDate } from "@/lib/settings";
-
-type Form = Omit<Profile, "id" | "author" | "subject">;
-const EMPTY: Form = { photo_path: null, name: "", birth_date: "", personality: "", likes: "", dislikes: "", intro: "" };
-const copyForm = (p: Profile | null): Form => p ? { photo_path: p.photo_path, name: p.name, birth_date: p.birth_date ?? "", personality: p.personality, likes: p.likes, dislikes: p.dislikes, intro: p.intro } : { ...EMPTY };
-const complete = (p: Form) => Boolean(p.photo_path && p.name.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.birth_date));
 
 export default function UsPage() {
-  const router = useRouter();
   const [me, setMe] = useState<PersonId | null>(null);
-  const [subject, setSubject] = useState<PersonId | null>(null);
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [profiles, setProfiles] = useState<(Profile | null)[]>([]);
+  const [settings, setSettings] = useState<Awaited<ReturnType<typeof loadRelationshipDate>> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [relationshipDate, setRelationshipDate] = useState("");
-  const [dashboardProfiles, setDashboardProfiles] = useState<Profile[]>([]);
-  const [editing, setEditing] = useState(false);
-  const [showAnniversaries, setShowAnniversaries] = useState(true);
-  const [showBirthdays, setShowBirthdays] = useState(true);
+  const [error, setError] = useState("");
+  const [view, setView] = useState<(Profile | null)[] | null>(null);
+  const [opening, setOpening] = useState(false);
 
-  useEffect(() => setMe(readMe()), []);
   useEffect(() => {
-    if (!me) return;
-    const other = PEOPLE.find((p) => p.id !== me)!.id;
-    Promise.all([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, date]) => {
-      setDashboardProfiles([self, partner].filter(Boolean) as Profile[]);
-      setRelationshipDate(date?.date ?? ""); setShowAnniversaries(date?.anniversaries ?? true); setShowBirthdays(date?.birthdays ?? true);
-    }).catch(() => {});
-  }, [me]);
-  useEffect(() => {
-    if (!me) return;
-    const other = PEOPLE.find((p) => p.id !== me)?.id ?? me;
-    setSubject((current) => current ?? other);
-  }, [me]);
-  useEffect(() => {
-    if (!me || !subject) return;
     let alive = true;
-    setLoading(true);
-    loadProfile(me, subject).then((p) => { if (alive) setForm(copyForm(p)); }).catch(() => alive && setMessage("소개서를 불러오지 못했어요")).finally(() => alive && setLoading(false));
+    const id = readMe();
+    setMe(id);
+    if (!id) return;
+    const other = id === "yeachan" ? "daeun" : "yeachan";
+    // 설정 조회 실패가 저장된 두 사람의 프로필까지 숨기지 않도록 각각 반영한다.
+    Promise.allSettled([loadProfile(id, id), loadProfile(id, other), loadRelationshipDate()]).then((results) => {
+      if (!alive) return;
+      const [self, partner, dates] = results;
+      setProfiles([self.status === "fulfilled" ? self.value : null, partner.status === "fulfilled" ? partner.value : null]);
+      if (dates.status === "fulfilled") setSettings(dates.value);
+      if (results.some((r) => r.status === "rejected")) setError("일부 정보를 불러오지 못했어요. 잠시 후 다시 방문해주세요.");
+      setLoading(false);
+    });
     return () => { alive = false; };
-  }, [me, subject]);
+  }, []);
 
-  function change(key: keyof Form, value: string | null) { setForm((current) => ({ ...current, [key]: value })); }
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!me || !subject) return;
-    setSaving(true); setMessage("");
-    if (!complete(form)) {
-      window.alert(`${subject === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(subject)}`} 소개서에 사진, 이름, 생년월일을 모두 입력해주세요.`);
-      setSaving(false);
-      return;
-    }
-    try {
-      await saveProfile({ ...form, author: me, subject });
-      const other = PEOPLE.find((p) => p.id !== me)!.id;
-      const next = subject === me ? other : me;
-      const nextProfile = await loadProfile(me, next);
-      if (!nextProfile || !complete(copyForm(nextProfile))) {
-        window.alert(`내가 쓰는 ${next === me ? "나" : nameOf(next)}를 작성해주세요`);
-        setSubject(next);
-        return;
-      }
-      router.replace("/us");
-      setMessage("소개서를 저장했어요");
-    }
-    catch { setMessage("저장하지 못했어요. 잠시 후 다시 시도해주세요"); }
-    finally { setSaving(false); }
+  const other: PersonId = me === "yeachan" ? "daeun" : "yeachan";
+  const selfName = profiles[0]?.name.trim() || nameOf(me);
+  const partnerName = profiles[1]?.name.trim() || nameOf(other);
+  const today = startOfDay(new Date());
+  const start = settings?.date ? parseISO(settings.date) : null;
+  const elapsed = start ? differenceInCalendarDays(today, start) + 1 : null;
+  const upcoming: { label: string; date: Date }[] = [];
+  if (start && settings?.anniversaries) {
+    const nextHundred = Math.max(100, Math.ceil((elapsed ?? 1) / 100) * 100);
+    upcoming.push({ label: `우리 ${nextHundred}일`, date: addDays(start, nextHundred - 1) });
+    let years = Math.max(1, today.getFullYear() - start.getFullYear());
+    if (differenceInCalendarDays(addYears(start, years), today) < 0) years++;
+    upcoming.push({ label: `우리 ${years}주년`, date: addYears(start, years) });
   }
-  async function photo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file || !me || !subject) return;
-    try { change("photo_path", await uploadProfilePhoto(me, subject, file)); setMessage("사진을 추가했어요. 저장을 눌러 완료해주세요"); }
-    catch { setMessage("사진을 업로드하지 못했어요"); }
-  }
+  if (settings?.birthdays) profiles.forEach((p) => {
+    if (!p?.birth_date) return;
+    const birthday = parseISO(p.birth_date);
+    let date = addYears(birthday, today.getFullYear() - birthday.getFullYear());
+    if (differenceInCalendarDays(date, today) < 0) date = addYears(birthday, today.getFullYear() + 1 - birthday.getFullYear());
+    upcoming.push({ label: `🎂 ${p.name} 생일`, date });
+  });
+  upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  async function saveSettings(e: React.FormEvent) {
-    e.preventDefault();
-    try { await saveRelationshipDate(relationshipDate, showAnniversaries, showBirthdays); setMessage("설정을 저장했어요"); }
-    catch { setMessage("설정을 저장하지 못했어요"); }
+  async function openPartner() {
+    if (!me || opening) return;
+    setOpening(true);
+    try { setView(await Promise.all([loadProfile(other, me), loadProfile(other, other)])); }
+    catch { setError("상대의 소개서를 불러오지 못했어요. 다시 눌러주세요."); }
+    finally { setOpening(false); }
   }
 
-  return <main className="mx-auto max-w-md px-6 pt-[calc(2rem+env(safe-area-inset-top))] pb-8">
-    <h1 className="mb-2 text-2xl font-bold">우리</h1>
-    <p className="mb-6 text-sm text-[#bda5ae]">우리의 오늘과 기념일을 모아두는 곳</p>
-    <section className="mb-6 grid grid-cols-2 gap-3">{dashboardProfiles.map((p) => <button key={`${p.author}-${p.subject}`} onClick={() => { setSubject(p.subject); setEditing(true); }} className="rounded-2xl bg-white p-4 text-left shadow-sm"><div className="mb-3 h-20 w-20 overflow-hidden rounded-2xl bg-[#ffe0e8]">{p.photo_path && <img src={photoUrl(p.photo_path)} alt="" className="h-full w-full object-cover" />}</div><p className="font-semibold">{p.name || nameOf(p.subject)}</p><p className="mt-1 text-xs text-[#bda5ae]">{p.subject === me ? "내 소개" : "상대 소개"}</p></button>)}</section>
-    {dashboardProfiles.length === 2 && !editing ? <button onClick={() => setEditing(true)} className="mb-6 w-full rounded-2xl bg-[#ffe0e8] py-3 text-sm font-semibold text-[#e05c7e]">소개서와 설정 수정</button> : null}
-    {(editing || dashboardProfiles.length < 2) && <form onSubmit={saveSettings} className="mb-8 rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">우리 설정</h2><label className="block text-sm"><span className="mb-2 block text-[#bda5ae]">사귄 날짜</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={relationshipDate} onChange={(e) => setRelationshipDate(formatDateInput(e.target.value))} className="w-full rounded-xl border border-[#f5d0da] px-3 py-2 outline-none focus:border-[#ff8fab]" /></label><label className="mt-3 flex items-center justify-between text-sm"><span>기념일 표시</span><input type="checkbox" checked={showAnniversaries} onChange={(e) => setShowAnniversaries(e.target.checked)} /></label><label className="mt-3 flex items-center justify-between text-sm"><span>생일 표시</span><input type="checkbox" checked={showBirthdays} onChange={(e) => setShowBirthdays(e.target.checked)} /></label><button className="mt-3 rounded-xl bg-[#ffe0e8] px-4 py-2 text-sm font-semibold text-[#e05c7e]">설정 저장</button></form>}
-    {(editing || dashboardProfiles.length < 2) && <h2 className="mb-2 text-lg font-bold">소개서 수정</h2>}
-    <div className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-[#ffeef2] p-1">
-      {me && PEOPLE.map((p) => <button key={p.id} onClick={() => setSubject(p.id)} className={`rounded-xl py-3 text-sm font-semibold ${subject === p.id ? "bg-white text-[#ff7092] shadow-sm" : "text-[#c5a8b2]"}`}>{p.id === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(p.id)}`}</button>)}
-    </div>
-    {(editing || dashboardProfiles.length < 2) && (loading ? <div className="py-16 text-center text-sm text-[#c5a8b2]">불러오는 중…</div> : <form onSubmit={submit} className="space-y-4">
-      <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
-      <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
-      <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", formatDateInput(e.target.value))} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
-      <Field label="성격" value={form.personality} onChange={(v) => change("personality", v)} placeholder="어떤 사람인가요?" area />
-      <Field label="좋아하는 것" value={form.likes} onChange={(v) => change("likes", v)} placeholder="좋아하는 것을 적어주세요" area />
-      <Field label="싫어하는 것" value={form.dislikes} onChange={(v) => change("dislikes", v)} placeholder="싫어하는 것을 적어주세요" area />
-      <Field label="한줄 소개" value={form.intro} onChange={(v) => change("intro", v)} placeholder="한 문장으로 소개해주세요" />
-      <button disabled={saving} className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white disabled:opacity-50">{saving ? "저장 중…" : "소개서 저장"}</button>
-      {message && <p className="text-center text-sm text-[#e05c7e]">{message}</p>}
-    </form>)}
+  return <main className="mx-auto max-w-md px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))]">
+    <header className="mb-7 flex items-center justify-between">
+      <div><p className="text-xs tracking-[0.22em] text-[#af798b]">둘만의 작은 공간</p><h1 className="mt-1 text-2xl font-bold">우리</h1></div>
+      <Link href="/us/settings" aria-label="설정 및 소개서 편집" className="flex h-11 w-11 items-center justify-center rounded-full border border-[#efdae1] bg-white text-[#976273]">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 2 3h4l2-3 3-1 1-4-2-2V6l-4-1-2-2Z" /><circle cx="11" cy="11" r="3" /></svg>
+      </Link>
+    </header>
+    {loading ? <p className="py-20 text-center text-[#af798b]">우리의 오늘을 불러오는 중…</p> : <>
+      <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#ffe4ec] via-[#fff0e9] to-[#f7e4ec] px-5 py-9 text-center">
+        <span aria-hidden="true" className="absolute -right-5 -top-8 text-[140px] leading-none text-white/50">♡</span>
+        <p className="relative text-xs tracking-[0.15em] text-[#a16b7c]">너와 나, 그리고 우리의 오늘</p>
+        <div className="relative mt-7 flex items-center justify-center gap-4">
+          <Avatar profile={profiles[0]} name={selfName} onClick={() => setView([profiles[0]])} />
+          <span aria-hidden="true" className="pb-7 text-2xl text-[#e986a4]">♥</span>
+          <Avatar profile={profiles[1]} name={partnerName} onClick={() => void openPartner()} disabled={opening} />
+        </div>
+        <div className="relative mt-7 border-t border-white/70 pt-6">
+          <p className="text-sm text-[#9c6c7b]">{elapsed !== null && elapsed > 0 ? "함께한 지" : "함께 쌓아갈 우리 이야기"}</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight text-[#9e4e6b]">{elapsed !== null && elapsed > 0 ? `${elapsed.toLocaleString()}일` : `${selfName} ♥ ${partnerName}`}</p>
+          <p className="mt-3 text-xs text-[#a87586]">{start ? `${format(start, "yyyy.MM.dd")}부터 함께` : "오늘도 서로의 하루에 머물러요"}</p>
+        </div>
+      </section>
+      {!error && (!profiles[0]?.photo_path || !profiles[1]?.photo_path || !settings?.date) && <Link href="/us/settings" className="mt-4 flex items-center justify-between rounded-2xl border border-[#efdce3] bg-white p-4 text-sm text-[#9e4e6b]"><span>우리의 소개와 처음 만난 날 채우기</span><span>→</span></Link>}
+      <section className="mt-7"><h2 className="mb-3 text-base font-bold">곧 찾아올 특별한 날</h2>
+        <div className="rounded-3xl bg-white p-5 shadow-sm">
+          {upcoming.length ? upcoming.slice(0, 3).map((event) => <div key={event.label} className="flex items-center justify-between border-b border-[#f7edf1] py-3 first:pt-0 last:border-0 last:pb-0"><div><p className="text-sm font-semibold">{event.label}</p><p className="mt-1 text-xs text-[#b28c99]">{format(event.date, "yyyy.MM.dd")}</p></div><span className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-xs font-semibold text-[#ba6582]">{differenceInCalendarDays(event.date, today) === 0 ? "오늘" : `D-${differenceInCalendarDays(event.date, today)}`}</span></div>) : <p className="text-sm leading-6 text-[#ad8291]">우리만의 특별한 날을 기다려요.<br />기념일은 우상단 설정에서 관리할 수 있어요.</p>}
+        </div>
+      </section>
+      <div className="mt-5 grid grid-cols-2 gap-3"><Link href="/calendar" className="rounded-3xl bg-[#f0eaf5] p-5"><span aria-hidden="true">✎</span><p className="mt-3 text-sm font-semibold">오늘의 우리 기록</p><p className="mt-1 text-xs text-[#9c879e]">사진과 하루를 남겨요 →</p></Link><Link href="/poke" className="rounded-3xl bg-[#fceadf] p-5"><span aria-hidden="true">♡</span><p className="mt-3 text-sm font-semibold">{partnerName} 생각 중</p><p className="mt-1 text-xs text-[#a88979]">살짝 찌르러 가기 →</p></Link></div>
+      <p className="mt-8 text-center text-xs text-[#bd99a6]">평범한 하루도, 함께라서 특별해.</p>
+    </>}
+    {error && <p role="alert" className="mt-4 text-sm text-[#a45270]">{error}</p>}
+    {view && <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 p-5" role="dialog" aria-modal="true" aria-label="소개서 보기"><section className="mx-auto my-8 max-w-md rounded-3xl bg-[#fff7f9] p-5"><button onClick={() => setView(null)} className="mb-5 rounded-full bg-white px-4 py-2 text-sm">닫기</button>{view.map((profile, i) => <article key={i} className="mb-4 rounded-2xl bg-white p-5"><h2 className="mb-4 font-bold">{view.length === 1 ? "내 소개" : i === 0 ? `${partnerName}가 쓴 나` : `${partnerName}가 쓴 본인 소개`}</h2>{profile ? <>{profile.photo_path && <img src={photoUrl(profile.photo_path)} alt={`${profile.name} 소개 사진`} className="mb-4 aspect-square w-full rounded-2xl object-cover" />}<h3 className="text-xl font-semibold">{profile.name}</h3><p className="mt-1 text-sm text-[#ab8191]">{profile.birth_date}</p><dl className="mt-5 space-y-4">{([['성격', profile.personality], ['좋아하는 것', profile.likes], ['싫어하는 것', profile.dislikes], ['한줄 소개', profile.intro]]).map(([label, value]) => <div key={label}><dt className="text-xs text-[#b18595]">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{value || "아직 작성하지 않았어요"}</dd></div>)}</dl></> : <p className="text-sm text-[#ab8191]">아직 작성한 소개서가 없어요.</p>}</article>)}</section></div>}
   </main>;
 }
 
-function formatDateInput(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  return [digits.slice(0, 4), digits.slice(4, 6), digits.slice(6, 8)].filter(Boolean).join("-");
-}
-
-function Field({ label, value, onChange, placeholder, area }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; area?: boolean }) {
-  return <label className="block"><span className="mb-2 block text-sm font-semibold">{label}</span>{area ? <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={3} className="w-full resize-none rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /> : <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" />}</label>;
+function Avatar({ profile, name, onClick, disabled }: { profile: Profile | null | undefined; name: string; onClick: () => void; disabled?: boolean }) {
+  return <button onClick={onClick} disabled={disabled} aria-label={`${name} 프로필 보기`} className="relative min-w-0 max-w-[40%] disabled:opacity-50"><div className="mx-auto h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-white/60 shadow-sm">{profile?.photo_path ? <img src={photoUrl(profile.photo_path)} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center text-3xl text-[#d99bb1]">♡</span>}</div><p className="mt-3 truncate text-sm font-semibold text-[#805666]">{name}</p></button>;
 }
