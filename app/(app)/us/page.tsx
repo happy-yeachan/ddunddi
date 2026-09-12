@@ -7,6 +7,8 @@ import { photoUrl } from "@/lib/supabase";
 
 type Form = Omit<Profile, "id" | "author" | "subject">;
 const EMPTY: Form = { photo_path: null, name: "", birth_date: "", personality: "", likes: "", dislikes: "", intro: "" };
+const copyForm = (p: Profile | null): Form => p ? { photo_path: p.photo_path, name: p.name, birth_date: p.birth_date ?? "", personality: p.personality, likes: p.likes, dislikes: p.dislikes, intro: p.intro } : { ...EMPTY };
+const complete = (p: Form) => Boolean(p.photo_path && p.name.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.birth_date));
 
 export default function UsPage() {
   const [me, setMe] = useState<PersonId | null>(null);
@@ -24,8 +26,10 @@ export default function UsPage() {
   }, [me]);
   useEffect(() => {
     if (!me || !subject) return;
+    let alive = true;
     setLoading(true);
-    loadProfile(me, subject).then((p) => setForm(p ? { photo_path: p.photo_path, name: p.name, birth_date: p.birth_date, personality: p.personality, likes: p.likes, dislikes: p.dislikes, intro: p.intro } : EMPTY)).catch(() => setMessage("소개서를 불러오지 못했어요")).finally(() => setLoading(false));
+    loadProfile(me, subject).then((p) => { if (alive) setForm(copyForm(p)); }).catch(() => alive && setMessage("소개서를 불러오지 못했어요")).finally(() => alive && setLoading(false));
+    return () => { alive = false; };
   }, [me, subject]);
 
   function change(key: keyof Form, value: string | null) { setForm((current) => ({ ...current, [key]: value })); }
@@ -33,7 +37,23 @@ export default function UsPage() {
     e.preventDefault();
     if (!me || !subject) return;
     setSaving(true); setMessage("");
-    try { await saveProfile({ ...form, author: me, subject }); setMessage("소개서를 저장했어요"); }
+    if (!complete(form)) {
+      window.alert(`${subject === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(subject)}`} 소개서에 사진, 이름, 생년월일을 모두 입력해주세요.`);
+      setSaving(false);
+      return;
+    }
+    try {
+      await saveProfile({ ...form, author: me, subject });
+      if (subject !== me) {
+        const self = await loadProfile(me, me);
+        if (!self || !complete(copyForm(self))) {
+          window.alert("내가 쓰는 나를 작성해주세요");
+          setSubject(me);
+          return;
+        }
+      }
+      setMessage("소개서를 저장했어요");
+    }
     catch { setMessage("저장하지 못했어요. 잠시 후 다시 시도해주세요"); }
     finally { setSaving(false); }
   }
@@ -52,7 +72,7 @@ export default function UsPage() {
     {loading ? <div className="py-16 text-center text-sm text-[#c5a8b2]">불러오는 중…</div> : <form onSubmit={submit} className="space-y-4">
       <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
       <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
-      <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="date" value={form.birth_date} onChange={(e) => change("birth_date", e.target.value)} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none focus:border-[#ff8fab]" /></label>
+      <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", e.target.value)} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
       <Field label="성격" value={form.personality} onChange={(v) => change("personality", v)} placeholder="어떤 사람인가요?" area />
       <Field label="좋아하는 것" value={form.likes} onChange={(v) => change("likes", v)} placeholder="좋아하는 것을 적어주세요" area />
       <Field label="싫어하는 것" value={form.dislikes} onChange={(v) => change("dislikes", v)} placeholder="싫어하는 것을 적어주세요" area />
