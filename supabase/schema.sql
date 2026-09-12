@@ -32,11 +32,29 @@ create index if not exists dates_date_idx on public.dates (date);
 create index if not exists date_photos_date_id_sort_idx on public.date_photos (date_id, sort);
 
 -- ── RLS ───────────────────────────────────────────────────────────────────
--- v0 는 둘만 쓰는 앱이라 RLS 를 끄고 anon key 로 직접 접근한다.
+-- 둘만 쓰는 앱이라 anon key 로 전부 읽고 쓴다.
+--
+-- RLS 를 끄는 대신 켜두고 전권 정책을 준다. 효과는 같지만 Supabase 는
+-- RLS 해제를 권장하지 않아 대시보드에서 다시 켜질 여지가 있고,
+-- 정책으로 적어두면 "누구나 접근 가능"이라는 의도가 코드에 남는다.
+--
 -- 대가: anon key 와 프로젝트 URL 을 아는 사람은 누구나 데이터를 읽고 쓸 수 있다.
--- 의도된 선택이며 README 에도 적어두었다.
-alter table public.dates       disable row level security;
-alter table public.date_photos disable row level security;
+-- anon key 는 브라우저 번들에 들어가므로 사실상 공개된 값이다. README 참고.
+alter table public.dates       enable row level security;
+alter table public.date_photos enable row level security;
+
+drop policy if exists "dates anon all"       on public.dates;
+drop policy if exists "date_photos anon all" on public.date_photos;
+
+create policy "dates anon all"
+  on public.dates for all
+  to anon, authenticated
+  using (true) with check (true);
+
+create policy "date_photos anon all"
+  on public.date_photos for all
+  to anon, authenticated
+  using (true) with check (true);
 
 -- ── Storage ───────────────────────────────────────────────────────────────
 

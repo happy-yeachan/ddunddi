@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addDays, addMonths, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
+import DateSheet from "@/components/DateSheet";
+import { dateKey } from "@/lib/records";
+import { readMe, type PersonId } from "@/lib/me";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -9,6 +12,10 @@ export default function CalendarPage() {
   // 보고 있는 달. 날짜가 아니라 달만 의미 있으므로 항상 1일로 맞춘다.
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState<Date | null>(null);
+  const [me, setMe] = useState<PersonId | null>(null);
+
+  // 레이아웃 가드가 이미 통과시킨 뒤라 값이 있다.
+  useEffect(() => setMe(readMe()), []);
 
   // 6주 42칸. 달마다 칸 수가 바뀌면 높이가 출렁이므로 항상 42칸으로 고정한다.
   const days = useMemo(() => {
@@ -77,6 +84,16 @@ export default function CalendarPage() {
           );
         })}
       </div>
+
+      {selected && me && (
+        <DateSheet
+          dateKey={dateKey(selected)}
+          label={`${selected.getMonth() + 1}월 ${selected.getDate()}일`}
+          me={me}
+          onClose={() => setSelected(null)}
+          onSaved={() => {}}
+        />
+      )}
     </main>
   );
 }
