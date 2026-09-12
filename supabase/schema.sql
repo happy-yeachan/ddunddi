@@ -31,6 +31,16 @@ create table if not exists public.date_photos (
 create index if not exists dates_date_idx on public.dates (date);
 create index if not exists date_photos_date_id_sort_idx on public.date_photos (date_id, sort);
 
+-- 가볍게 서로에게 신호를 남기는 찌르기 기록
+create table if not exists public.pokes (
+  id         uuid primary key default gen_random_uuid(),
+  sender     text not null check (sender in ('yeachan', 'daeun')),
+  recipient  text not null check (recipient in ('yeachan', 'daeun')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists pokes_created_at_idx on public.pokes (created_at desc);
+
 -- ── RLS ───────────────────────────────────────────────────────────────────
 -- 둘만 쓰는 앱이라 anon key 로 전부 읽고 쓴다.
 --
@@ -42,9 +52,11 @@ create index if not exists date_photos_date_id_sort_idx on public.date_photos (d
 -- anon key 는 브라우저 번들에 들어가므로 사실상 공개된 값이다. README 참고.
 alter table public.dates       enable row level security;
 alter table public.date_photos enable row level security;
+alter table public.pokes       enable row level security;
 
 drop policy if exists "dates anon all"       on public.dates;
 drop policy if exists "date_photos anon all" on public.date_photos;
+drop policy if exists "pokes anon all"       on public.pokes;
 
 create policy "dates anon all"
   on public.dates for all
@@ -53,6 +65,11 @@ create policy "dates anon all"
 
 create policy "date_photos anon all"
   on public.date_photos for all
+  to anon, authenticated
+  using (true) with check (true);
+
+create policy "pokes anon all"
+  on public.pokes for all
   to anon, authenticated
   using (true) with check (true);
 
