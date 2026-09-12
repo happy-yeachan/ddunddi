@@ -69,7 +69,15 @@ iOS 스플래시는 media 쿼리가 기기와 정확히 맞아야 뜬다. 기기
 
 ## 데이터
 
-`supabase/schema.sql`을 Supabase 콘솔 SQL Editor에서 실행한다. 여러 번 실행해도 안전하다.
+스키마는 `supabase/schema.sql` 한 파일에 있다. 테이블이 필요하면 그 파일에 적고:
+
+```bash
+npm run db:push
+```
+
+여러 번 실행해도 안전하다. 전체를 한 트랜잭션으로 돌리므로 절반만 적용되는 상태가 생기지 않는다.
+`SUPABASE_DB_URL`이 필요하며 Session pooler 문자열을 쓴다(Direct connection은 IPv6 전용이라 대개
+연결되지 않는다). 콘솔 SQL Editor에 직접 붙여넣어도 되지만, 설명 문장이 섞여 들어가기 쉽다.
 
 - `dates` — 하루 한 레코드. `date`가 unique라 upsert의 충돌 기준으로 쓴다
 - `date_photos` — `dates`에 종속. `on delete cascade`
