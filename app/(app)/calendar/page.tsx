@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, addMonths, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import DateSheet from "@/components/DateSheet";
-import { dateKey } from "@/lib/records";
+import { dateKey, loadMonth } from "@/lib/records";
+import { photoUrl } from "@/lib/supabase";
 import { readMe, type PersonId } from "@/lib/me";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -14,6 +15,9 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState<Date | null>(null);
   const [me, setMe] = useState<PersonId | null>(null);
 
+  // date 문자열 → { id, cover }. 화면에 보이는 42칸 전체를 담는다.
+  const [covers, setCovers] = useState<Map<string, { cover: string | null }>>(new Map());
+
   // 레이아웃 가드가 이미 통과시킨 뒤라 값이 있다.
   useEffect(() => setMe(readMe()), []);
 
@@ -22,6 +26,22 @@ export default function CalendarPage() {
     const gridStart = startOfWeek(cursor, { weekStartsOn: 0 });
     return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   }, [cursor]);
+
+  // 이번 달이 아니라 화면에 보이는 42칸 범위를 통째로 읽는다. 앞뒤 달 칸에도
+  // 기록이 있으면 썸네일이 보여야 한다.
+  const refresh = useCallback(async () => {
+    try {
+      const map = await loadMonth(dateKey(days[0]), dateKey(days[41]));
+      setCovers(map);
+    } catch {
+      // 썸네일은 부가 정보다. 실패해도 캘린더 자체는 계속 쓸 수 있어야 한다.
+      setCovers(new Map());
+    }
+  }, [days]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const today = new Date();
 
@@ -65,19 +85,45 @@ export default function CalendarPage() {
           const inMonth = isSameMonth(day, cursor);
           const isToday = isSameDay(day, today);
           const isSelected = selected && isSameDay(day, selected);
+          const entry = covers.get(dateKey(day));
+          const cover = entry?.cover ?? null;
 
           return (
             <button
               key={day.toISOString()}
               onClick={() => setSelected(day)}
               className={[
-                "relative aspect-square rounded-xl text-sm transition active:scale-95",
+                "relative aspect-square overflow-hidden rounded-xl text-sm transition active:scale-95",
                 inMonth ? "" : "opacity-25",
                 isSelected ? "bg-[#ff8fab] font-semibold text-white" : "bg-white/60",
                 isToday && !isSelected ? "ring-2 ring-[#ff8fab]" : "",
               ].join(" ")}
             >
-              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              {cover && (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoUrl(cover)}
+                    alt=""
+                    loading="lazy"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                  {/* 사진 위에서도 날짜가 읽히도록 어둡게 깐다. */}
+                  <span className="absolute inset-0 bg-black/40" />
+                </>
+              )}
+
+              {/* 사진은 없고 메모만 있는 날 */}
+              {!cover && entry && (
+                <span className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#ff8fab]" />
+              )}
+
+              <span
+                className={[
+                  "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+                  cover && !isSelected ? "font-semibold text-white" : "",
+                ].join(" ")}
+              >
                 {day.getDate()}
               </span>
             </button>
@@ -91,7 +137,7 @@ export default function CalendarPage() {
           label={`${selected.getMonth() + 1}월 ${selected.getDate()}일`}
           me={me}
           onClose={() => setSelected(null)}
-          onSaved={() => {}}
+          onSaved={refresh}
         />
       )}
     </main>
