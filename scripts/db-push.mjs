@@ -47,7 +47,16 @@ const client = new pg.Client({
   ssl: { rejectUnauthorized: false },
 });
 
-await client.connect();
+// 풀러가 연결을 끊으며 에러를 뱉는 경우가 있다. 적용이 끝난 뒤라면
+// 결과에 영향이 없으므로 프로세스를 죽이지 않고 흘려보낸다.
+client.on("error", (e) => console.warn("연결 종료 중 경고:", e.message));
+
+try {
+  await client.connect();
+} catch (e) {
+  console.error("DB 에 연결하지 못했습니다.\n", e.message);
+  process.exit(1);
+}
 try {
   // 전체를 한 트랜잭션으로 돌린다. 중간에 실패하면 아무것도 남기지 않는다.
   await client.query("begin");
@@ -72,5 +81,5 @@ try {
   }
   process.exitCode = 1;
 } finally {
-  await client.end();
+  await client.end().catch(() => {});
 }
