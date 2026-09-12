@@ -6,6 +6,7 @@ import { addDays, addYears, differenceInCalendarDays, format, parseISO, startOfD
 import { nameOf, readMe, type PersonId } from "@/lib/me";
 import { loadProfile, type Profile } from "@/lib/profiles";
 import { loadRelationshipDate } from "@/lib/settings";
+import { dateKey, loadUpcoming, type EventItem } from "@/lib/records";
 import { photoUrl } from "@/lib/supabase";
 
 export default function UsPage() {
@@ -17,6 +18,7 @@ export default function UsPage() {
   const [view, setView] = useState<(Profile | null)[] | null>(null);
   const [opening, setOpening] = useState(false);
   const [givenName, setGivenName] = useState("");
+  const [events, setEvents] = useState<EventItem[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -25,6 +27,8 @@ export default function UsPage() {
     if (!id) return;
     const other = id === "yeachan" ? "daeun" : "yeachan";
     // 설정 조회 실패가 저장된 두 사람의 프로필까지 숨기지 않도록 각각 반영한다.
+    // 일정은 부가 정보라 실패해도 화면을 막지 않는다.
+    loadUpcoming(dateKey(new Date()), 10).then((list) => { if (alive) setEvents(list); }).catch(() => {});
     Promise.allSettled([loadProfile(id, id), loadProfile(id, other), loadRelationshipDate(), loadProfile(other, id)]).then((results) => {
       if (!alive) return;
       const [self, partner, dates, namedByPartner] = results;
@@ -43,7 +47,11 @@ export default function UsPage() {
   const today = startOfDay(new Date());
   const start = settings?.date ? parseISO(settings.date) : null;
   const elapsed = start ? differenceInCalendarDays(today, start) + 1 : null;
-  const upcoming: { label: string; date: Date }[] = [];
+  // 기념일·생일과 함께 보는 목록. 일정도 같은 줄에 섞어 시간순으로 정렬한다.
+  const upcoming: { label: string; date: Date; at?: string | null }[] = [];
+  events.forEach((e) => {
+    upcoming.push({ label: e.title, date: parseISO(e.date), at: e.at });
+  });
   if (start && settings?.anniversaries) {
     const nextHundred = Math.max(100, Math.ceil((elapsed ?? 1) / 100) * 100);
     upcoming.push({ label: `우리 ${nextHundred}일`, date: addDays(start, nextHundred - 1) });
@@ -93,7 +101,7 @@ export default function UsPage() {
       {!error && (!profiles[0]?.photo_path || !profiles[1]?.photo_path || !settings?.date) && <Link href="/us/settings" className="mt-4 flex items-center justify-between rounded-2xl border border-[#efdce3] bg-white p-4 text-sm text-[#9e4e6b]"><span>우리의 소개와 처음 만난 날 채우기</span><span>→</span></Link>}
       <section className="mt-7"><h2 className="mb-3 text-base font-bold">곧 찾아올 특별한 날</h2>
         <div className="rounded-3xl bg-white p-5 shadow-sm">
-          {upcoming.length ? upcoming.slice(0, 3).map((event) => <div key={event.label} className="flex items-center justify-between border-b border-[#f7edf1] py-3 first:pt-0 last:border-0 last:pb-0"><div><p className="text-sm font-semibold">{event.label}</p><p className="mt-1 text-xs text-[#b28c99]">{format(event.date, "yyyy.MM.dd")}</p></div><span className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-xs font-semibold text-[#ba6582]">{differenceInCalendarDays(event.date, today) === 0 ? "오늘" : `D-${differenceInCalendarDays(event.date, today)}`}</span></div>) : <p className="text-sm leading-6 text-[#ad8291]">우리만의 특별한 날을 기다려요.<br />기념일은 우상단 설정에서 관리할 수 있어요.</p>}
+          {upcoming.length ? upcoming.slice(0, 5).map((event) => <div key={`${event.label}-${event.date.getTime()}`} className="flex items-center justify-between border-b border-[#f7edf1] py-3 first:pt-0 last:border-0 last:pb-0"><div><p className="text-sm font-semibold">{event.label}</p><p className="mt-1 text-xs text-[#b28c99]">{format(event.date, "yyyy.MM.dd")}{event.at !== undefined ? ` · ${event.at ? event.at.slice(0, 5) : "종일"}` : ""}</p></div><span className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-xs font-semibold text-[#ba6582]">{differenceInCalendarDays(event.date, today) === 0 ? "오늘" : `D-${differenceInCalendarDays(event.date, today)}`}</span></div>) : <p className="text-sm leading-6 text-[#ad8291]">우리만의 특별한 날을 기다려요.<br />기념일은 우상단 설정에서, 일정은 캘린더에서 더할 수 있어요.</p>}
         </div>
       </section>
       <div className="mt-5 grid grid-cols-2 gap-3"><Link href="/calendar" className="rounded-3xl bg-[#f0eaf5] p-5"><span aria-hidden="true">✎</span><p className="mt-3 text-sm font-semibold">오늘의 우리 기록</p><p className="mt-1 text-xs text-[#9c879e]">사진과 하루를 남겨요 →</p></Link><Link href="/poke" className="rounded-3xl bg-[#fceadf] p-5"><span aria-hidden="true">♡</span><p className="mt-3 text-sm font-semibold">{partnerName} 생각 중</p><p className="mt-1 text-xs text-[#a88979]">살짝 찌르러 가기 →</p></Link></div>

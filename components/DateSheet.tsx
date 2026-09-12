@@ -33,6 +33,8 @@ type Progress = { done: number; total: number } | null;
 export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const partner = PEOPLE.find((p) => p.id !== me)!.id;
+  // 아직 오지 않은 날에는 일기를 쓰지 않는다. 일정은 앞날에도 잡을 수 있다.
+  const isFuture = dateKey > todayKey();
 
   const [loading, setLoading] = useState(true);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -105,8 +107,12 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     [eventDraft, events]
   );
   const dirty = useMemo(
-    () => draft !== saved || picked.length > 0 || doomed.length > 0 || eventsChanged,
-    [draft, saved, picked.length, doomed.length, eventsChanged]
+    () =>
+      (!isFuture && draft !== saved) ||
+      picked.length > 0 ||
+      doomed.length > 0 ||
+      eventsChanged,
+    [isFuture, draft, saved, picked.length, doomed.length, eventsChanged]
   );
 
   async function save() {
@@ -142,7 +148,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
       await applyEvents(dateKey, me, events, eventDraft);
 
-      const text = draft.trim();
+      const text = isFuture ? "" : draft.trim();
       const mine = notes.find((n) => n.author === me);
       if (text) {
         await upsertNote(dateId, me, text);
@@ -215,6 +221,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             <p className="py-10 text-center text-sm text-[#bda5ae]">불러오는 중…</p>
           ) : mode === "view" ? (
             <ViewBody
+              isFuture={isFuture}
               events={events}
               photos={photos}
               notes={notes}
@@ -380,18 +387,29 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 }}
               />
 
-              <section className="mt-5">
-                <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">내 일기</h3>
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="오늘 어땠어?"
-                  rows={5}
-                  className="w-full resize-none rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 leading-relaxed outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
-                />
-              </section>
+              {isFuture ? (
+                <section className="mt-5">
+                  <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일기</h3>
+                  <p className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm text-[#d8b6c0]">
+                    아직 오지 않은 날이에요.
+                    <br />
+                    일기는 그날이 되면 쓸 수 있어요
+                  </p>
+                </section>
+              ) : (
+                <section className="mt-5">
+                  <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">내 일기</h3>
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="오늘 어땠어?"
+                    rows={5}
+                    className="w-full resize-none rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 leading-relaxed outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
+                  />
+                </section>
+              )}
 
-              <section className="mt-4 mb-2">
+              <section className={`mt-4 mb-2 ${isFuture ? "hidden" : ""}`}>
                 <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">
                   {partnerLabel}의 일기
                 </h3>
@@ -454,7 +472,9 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 disabled={saving || !dirty}
                 className="flex-1 rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
               >
-                {saving ? "저장 중…" : summarize(picked.length, doomed.length, draft !== saved)}
+                {saving
+                  ? "저장 중…"
+                  : summarize(picked.length, doomed.length, !isFuture && draft !== saved)}
               </button>
             </div>
           )}
@@ -476,6 +496,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 }
 
 function ViewBody({
+  isFuture,
   events,
   photos,
   notes,
@@ -485,6 +506,7 @@ function ViewBody({
   onZoom,
   onEdit,
 }: {
+  isFuture: boolean;
   events: EventItem[];
   photos: Photo[];
   notes: Note[];
@@ -542,8 +564,12 @@ function ViewBody({
         </div>
       )}
 
-      <Diary title="내 일기" body={mine?.body} onEdit={onEdit} />
-      <Diary title={`${partnerLabel}의 일기`} body={theirs?.body} />
+      {!isFuture && (
+        <>
+          <Diary title="내 일기" body={mine?.body} onEdit={onEdit} />
+          <Diary title={`${partnerLabel}의 일기`} body={theirs?.body} />
+        </>
+      )}
     </div>
   );
 }
@@ -578,6 +604,12 @@ function Diary({
       )}
     </section>
   );
+}
+
+function todayKey() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function toDraft(list: EventItem[]): EventDraft[] {
