@@ -8,6 +8,7 @@ import { dateKey, loadMonth } from "@/lib/records";
 import { photoUrl } from "@/lib/supabase";
 import { readMe, type PersonId } from "@/lib/me";
 import { loadProfile, type Profile } from "@/lib/profiles";
+import { loadRelationshipDate } from "@/lib/settings";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -19,6 +20,8 @@ export default function CalendarPage() {
   const [otherProfile, setOtherProfile] = useState<Profile | null>(null);
   const [viewing, setViewing] = useState(false);
   const [otherViews, setOtherViews] = useState<{ aboutMe: Profile | null; aboutSelf: Profile | null } | null>(null);
+  const [relationshipDate, setRelationshipDate] = useState<string | null>(null);
+  const [birthdays, setBirthdays] = useState<string[]>([]);
 
   // date 문자열 → { id, cover }. 화면에 보이는 42칸 전체를 담는다.
   const [covers, setCovers] = useState<Map<string, { cover: string | null }>>(new Map());
@@ -29,6 +32,10 @@ export default function CalendarPage() {
     if (!me) return;
     const other = (me === "yeachan" ? "daeun" : "yeachan") as PersonId;
     loadProfile(me, other).then(setOtherProfile).catch(() => setOtherProfile(null));
+    Promise.all([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, anniversary]) => {
+      setBirthdays([self?.birth_date, partner?.birth_date].filter(Boolean) as string[]);
+      setRelationshipDate(anniversary);
+    }).catch(() => {});
   }, [me]);
 
   async function openOtherProfile() {
@@ -105,6 +112,9 @@ export default function CalendarPage() {
           const isSelected = selected && isSameDay(day, selected);
           const entry = covers.get(dateKey(day));
           const cover = entry?.cover ?? null;
+          const key = dateKey(day).slice(5);
+          const isBirthday = birthdays.some((date) => date.slice(5) === key);
+          const isAnniversary = Boolean(relationshipDate && relationshipDate.slice(5) === key);
 
           return (
             <button
@@ -144,6 +154,7 @@ export default function CalendarPage() {
               >
                 {day.getDate()}
               </span>
+              {(isBirthday || isAnniversary) && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] text-[#ff8fab]">{isAnniversary ? "♥" : "●"}</span>}
             </button>
           );
         })}

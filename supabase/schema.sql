@@ -79,6 +79,12 @@ create table if not exists public.profiles (
 
 create index if not exists profiles_author_subject_idx on public.profiles (author, subject);
 
+create table if not exists public.app_settings (
+  id                  int primary key check (id = 1),
+  relationship_date   date,
+  updated_at          timestamptz not null default now()
+);
+
 -- ── RLS ───────────────────────────────────────────────────────────────────
 -- 둘만 쓰는 앱이라 anon key 로 전부 읽고 쓴다.
 --
@@ -93,12 +99,14 @@ alter table public.date_photos enable row level security;
 alter table public.date_notes  enable row level security;
 alter table public.pokes       enable row level security;
 alter table public.profiles    enable row level security;
+alter table public.app_settings enable row level security;
 
 drop policy if exists "dates anon all"       on public.dates;
 drop policy if exists "date_photos anon all" on public.date_photos;
 drop policy if exists "date_notes anon all"  on public.date_notes;
 drop policy if exists "pokes anon all"       on public.pokes;
 drop policy if exists "profiles anon all"    on public.profiles;
+drop policy if exists "app_settings anon all" on public.app_settings;
 
 create policy "dates anon all"
   on public.dates for all
@@ -122,6 +130,11 @@ create policy "pokes anon all"
 
 create policy "profiles anon all"
   on public.profiles for all
+  to anon, authenticated
+  using (true) with check (true);
+
+create policy "app_settings anon all"
+  on public.app_settings for all
   to anon, authenticated
   using (true) with check (true);
 
