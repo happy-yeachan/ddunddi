@@ -157,8 +157,12 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 multiple
                 className="hidden"
                 onChange={(e) => {
-                  setPicked((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+                  // files 를 먼저 꺼내둔다. setPicked 에 넘기는 함수는 나중에
+                  // 실행되는데, 그 전에 value 를 비우면 files 도 같이 비워져
+                  // 빈 목록을 읽게 된다.
+                  const files = Array.from(e.target.files ?? []);
                   e.target.value = "";
+                  setPicked((prev) => [...prev, ...files]);
                 }}
               />
 
@@ -202,7 +206,11 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             disabled={saving || loading || !dirty}
             className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
           >
-            {saving ? "저장 중…" : "저장"}
+            {saving
+              ? "저장 중…"
+              : picked.length > 0
+                ? `저장 · 사진 ${picked.length}장`
+                : "저장"}
           </button>
         </div>
       </section>
