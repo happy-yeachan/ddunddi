@@ -33,6 +33,9 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const [authorLabel, setAuthorLabel] = useState<string | null>(null);
 
   const [picked, setPicked] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  // 브라우저가 못 그리는 형식(HEIC 등)의 인덱스
+  const [unpreviewable, setUnpreviewable] = useState<number[]>([]);
   const [progress, setProgress] = useState<Progress>(null);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -69,6 +72,14 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     }).catch(() => {});
     return () => { alive = false; };
   }, [author, me]);
+
+  // 고른 파일의 미리보기. objectURL 은 직접 해제하지 않으면 메모리에 남는다.
+  useEffect(() => {
+    const urls = picked.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    setUnpreviewable([]);
+    return () => urls.forEach(URL.revokeObjectURL);
+  }, [picked]);
 
   async function remove(photo: Photo) {
     if (removing) return;
@@ -136,7 +147,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         className="absolute inset-0 bg-black/30"
       />
 
-      <section className="relative flex max-h-[88dvh] w-full flex-col rounded-t-3xl bg-[#fff7f9] pb-[env(safe-area-inset-bottom)]">
+      <section className="relative mx-auto flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-3xl bg-[#fff7f9] pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center justify-between px-5 pb-2 pt-3">
           <div className="h-1 w-10 rounded-full bg-[#eccfd8]" />
         </div>
@@ -179,9 +190,23 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
                 {picked.map((f, i) => (
                   <div key={`${f.name}-${i}`} className="relative">
-                    <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-[#f0cdd8] text-[10px] text-[#bda5ae]">
-                      올릴 사진
-                    </div>
+                    {previews[i] && !unpreviewable.includes(i) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previews[i]}
+                        alt=""
+                        className="aspect-square w-full rounded-xl border border-dashed border-[#f0cdd8] object-cover"
+                        onError={() =>
+                          setUnpreviewable((prev) =>
+                            prev.includes(i) ? prev : [...prev, i]
+                          )
+                        }
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-[#f0cdd8] text-[10px] text-[#bda5ae]">
+                        올릴 사진
+                      </div>
+                    )}
                     <button
                       onClick={() => setPicked((prev) => prev.filter((_, j) => j !== i))}
                       aria-label="선택 취소"
