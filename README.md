@@ -112,12 +112,14 @@ anon 키 업로드가 전부 거부되므로 `schema.sql`에 select/insert 정�
 ```
 app/
   layout.tsx            메타데이터 · PWA 메타태그 · iOS 스플래시 링크
-  page.tsx              게이트 (비밀번호 → 이름 선택 → /calendar)
+  page.tsx              게이트 (비밀번호 → 이름 선택 → /us)
   api/gate/route.ts     비밀번호 검증. 서버에서만 비교한다
   (app)/
     layout.tsx          게이트 검사 + 하단 탭바 (3탭이 공유)
     calendar/page.tsx   월 캘린더 · 셀 썸네일
-    us/page.tsx         서로의 소개서
+    us/page.tsx         커플 홈 · 가까운 특별한 날 3개
+    us/settings/page.tsx 상대 소개서 편집
+    calendar/settings/page.tsx 사귄 날짜 · 생일/기념일 표시 설정
     poke/page.tsx       찌르기
 components/
   DateSheet.tsx         날짜 상세 시트. 사진과 일기를 한 번에 편집한다
@@ -136,6 +138,10 @@ supabase/schema.sql
 ```
 
 ### 캘린더
+
+홈의 특별한 날과 오늘 기록을 누르면 `/calendar?date=YYYY-MM-DD`로 해당 날짜가 열린다.
+기념일은 사귄 날을 1일로 계산한다. 2월 29일 생일·주년은 평년에 2월 28일로 표시한다.
+날짜 계산과 저장 재시도 회귀 검증은 `npm test`, 타입 및 배포 빌드는 `npm run build`로 확인한다.
 
 지나간 기록과 앞으로의 일정을 한 화면에서 본다. 셀 배경은 그날 첫 사진이고,
 칸 위쪽 점은 일정이고 색이 누구 것인지 알려준다 — 파랑은 나, 주황은 상대, 초록은 같이.

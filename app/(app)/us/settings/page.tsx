@@ -3,14 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { nameOf, PEOPLE, readMe, type PersonId } from "@/lib/me";
+import { PEOPLE, readMe, type PersonId } from "@/lib/me";
+import { parseDay } from "@/lib/calendar-dates";
 import { loadProfile, saveProfile, uploadProfilePhoto, type Profile } from "@/lib/profiles";
 import { photoUrl } from "@/lib/supabase";
 
 type Form = Omit<Profile, "id" | "author" | "subject">;
 const EMPTY: Form = { photo_path: null, name: "", birth_date: "", personality: "", likes: "", dislikes: "", intro: "" };
 const copyForm = (p: Profile | null): Form => p ? { photo_path: p.photo_path, name: p.name, birth_date: p.birth_date ?? "", personality: p.personality, likes: p.likes, dislikes: p.dislikes, intro: p.intro } : { ...EMPTY };
-const complete = (p: Form) => Boolean(p.photo_path && p.name.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.birth_date));
+const complete = (p: Form) => Boolean(p.photo_path && p.name.trim() && parseDay(p.birth_date));
 
 export default function UsPage() {
   const router = useRouter();
@@ -20,6 +21,9 @@ export default function UsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => setMe(readMe()), []);
   useEffect(() => {
@@ -31,17 +35,18 @@ export default function UsPage() {
     if (!me || !subject) return;
     let alive = true;
     setLoading(true);
-    loadProfile(me, subject).then((p) => { if (alive) setForm(copyForm(p)); }).catch(() => alive && setMessage("소개서를 불러오지 못했어요")).finally(() => alive && setLoading(false));
+    setLoadFailed(false); setMessage("");
+    loadProfile(me, subject).then((p) => { if (alive) setForm(copyForm(p)); }).catch(() => { if (alive) { setLoadFailed(true); setMessage("소개서를 불러오지 못했어요"); } }).finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [me, subject]);
+  }, [me, subject, retry]);
 
   function change(key: keyof Form, value: string | null) { setForm((current) => ({ ...current, [key]: value })); }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!me || !subject) return;
+    if (!me || !subject || loading || saving || uploading || loadFailed) return;
     setSaving(true); setMessage("");
     if (!complete(form)) {
-      window.alert("상대 소개서에 사진, 이름, 생년월일을 모두 입력해주세요.");
+      window.alert("사진, 이름, 올바른 생년월일을 모두 입력해주세요.");
       setSaving(false);
       return;
     }
@@ -54,9 +59,11 @@ export default function UsPage() {
     finally { setSaving(false); }
   }
   async function photo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file || !me || !subject) return;
+    const file = e.target.files?.[0]; if (!file || !me || !subject || uploading || saving) return;
+    setUploading(true); setMessage("사진을 업로드하는 중이에요…");
     try { change("photo_path", await uploadProfilePhoto(me, subject, file)); setMessage("사진을 추가했어요. 저장을 눌러 완료해주세요"); }
     catch { setMessage("사진을 업로드하지 못했어요"); }
+    finally { setUploading(false); }
   }
 
 
@@ -66,8 +73,10 @@ export default function UsPage() {
     <p className="mb-6 text-sm text-[#bda5ae]">두 사람의 소개를 관리해요</p>
     <Link href="/calendar/settings" className="mb-5 inline-block text-sm text-[#a45d73]">사귄 날짜 · 기념일은 캘린더 설정에서 →</Link>
     {message && <p role="status" className="mb-4 text-sm text-[#a45270]">{message}</p>}
+    {loadFailed && <button onClick={() => setRetry((v) => v + 1)} className="mb-4 text-sm underline">다시 불러오기</button>}
     <h2 className="mb-5 text-lg font-semibold">내가 쓰는 상대</h2>
     {loading ? <p className="py-10">불러오는 중…</p> : <form onSubmit={submit} className="space-y-4">
+      <fieldset disabled={saving || uploading || loadFailed} className="space-y-4 disabled:opacity-60">
       <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
       <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
       <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", formatDateInput(e.target.value))} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
@@ -75,7 +84,8 @@ export default function UsPage() {
       <Field label="좋아하는 것" value={form.likes} onChange={(v) => change("likes", v)} placeholder="좋아하는 것을 적어주세요" area />
       <Field label="싫어하는 것" value={form.dislikes} onChange={(v) => change("dislikes", v)} placeholder="싫어하는 것을 적어주세요" area />
       <Field label="한줄 소개" value={form.intro} onChange={(v) => change("intro", v)} placeholder="한 문장으로 소개해주세요" />
-      <button disabled={saving} className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white disabled:opacity-50">{saving ? "저장 중…" : "소개서 저장"}</button>
+      <button disabled={saving || uploading || loadFailed} className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white disabled:opacity-50">{uploading ? "사진 업로드 중…" : saving ? "저장 중…" : "소개서 저장"}</button>
+      </fieldset>
       {message && <p className="text-center text-sm text-[#e05c7e]">{message}</p>}
     </form>}
   </main>;

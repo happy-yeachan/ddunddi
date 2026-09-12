@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { addDays, addYears, differenceInCalendarDays, format, parseISO, startOfDay } from "date-fns";
+import { useEffect, useRef, useState } from "react";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
+import { parseDay, upcomingSpecialDays } from "@/lib/calendar-dates";
+import { useToday } from "@/lib/use-today";
 import { nameOf, readMe, type PersonId } from "@/lib/me";
 import { loadProfile, type Profile } from "@/lib/profiles";
 import { loadRelationshipDate } from "@/lib/settings";
@@ -17,9 +19,21 @@ export default function UsPage() {
   const [error, setError] = useState("");
   const [view, setView] = useState<(Profile | null)[] | null>(null);
   const [opening, setOpening] = useState(false);
-  const [givenName, setGivenName] = useState("");
-  const [givenProfile, setGivenProfile] = useState<Profile | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const modal = dialog.current;
+    if (view && modal && !modal.open) modal.showModal();
+    return () => { if (modal?.open) modal.close(); };
+  }, [view]);
   const [events, setEvents] = useState<EventItem[]>([]);
+  const todayKey = useToday();
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") setRevision((v) => v + 1); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -29,48 +43,25 @@ export default function UsPage() {
     const other = id === "yeachan" ? "daeun" : "yeachan";
     // 설정 조회 실패가 저장된 두 사람의 프로필까지 숨기지 않도록 각각 반영한다.
     // 일정은 부가 정보라 실패해도 화면을 막지 않는다.
-    loadUpcoming(dateKey(new Date()), 10).then((list) => { if (alive) setEvents(list); }).catch(() => {});
-    Promise.allSettled([loadProfile(other, id), loadProfile(id, other), loadRelationshipDate()]).then((results) => {
+    Promise.allSettled([loadProfile(other, id), loadProfile(id, other), loadRelationshipDate(), loadUpcoming(todayKey, 3)]).then((results) => {
       if (!alive) return;
-      const [self, partner, dates] = results;
-      if (self.status === "fulfilled") {
-        setGivenName(self.value?.name.trim() || "");
-        setGivenProfile(self.value);
-      }
+      const [self, partner, dates, upcomingEvents] = results;
+      if (upcomingEvents.status === "fulfilled") setEvents(upcomingEvents.value);
       setProfiles([self.status === "fulfilled" ? self.value : null, partner.status === "fulfilled" ? partner.value : null]);
       if (dates.status === "fulfilled") setSettings(dates.value);
-      if (results.some((r) => r.status === "rejected")) setError("일부 정보를 불러오지 못했어요. 잠시 후 다시 방문해주세요.");
+      setError(results.some((r) => r.status === "rejected") ? "일부 정보를 불러오지 못했어요. 다시 불러와주세요." : "");
       setLoading(false);
     });
     return () => { alive = false; };
-  }, []);
+  }, [todayKey, revision]);
 
   const other: PersonId = me === "yeachan" ? "daeun" : "yeachan";
-  const selfName = givenName || nameOf(me);
+  const selfName = profiles[0]?.name.trim() || nameOf(me);
   const partnerName = profiles[1]?.name.trim() || nameOf(other);
-  const today = startOfDay(new Date());
-  const start = settings?.date ? parseISO(settings.date) : null;
+  const today = parseISO(todayKey);
+  const start = parseDay(settings?.date);
   const elapsed = start ? differenceInCalendarDays(today, start) + 1 : null;
-  // 기념일·생일과 함께 보는 목록. 일정도 같은 줄에 섞어 시간순으로 정렬한다.
-  const upcoming: { label: string; date: Date; at?: string | null }[] = [];
-  events.forEach((e) => {
-    upcoming.push({ label: e.title, date: parseISO(e.date), at: e.at });
-  });
-  if (start && settings?.anniversaries) {
-    const nextHundred = Math.max(100, Math.ceil((elapsed ?? 1) / 100) * 100);
-    upcoming.push({ label: `우리 ${nextHundred}일`, date: addDays(start, nextHundred - 1) });
-    let years = Math.max(1, today.getFullYear() - start.getFullYear());
-    if (differenceInCalendarDays(addYears(start, years), today) < 0) years++;
-    upcoming.push({ label: `우리 ${years}주년`, date: addYears(start, years) });
-  }
-  if (settings?.birthdays) profiles.forEach((p) => {
-    if (!p?.birth_date) return;
-    const birthday = parseISO(p.birth_date);
-    let date = addYears(birthday, today.getFullYear() - birthday.getFullYear());
-    if (differenceInCalendarDays(date, today) < 0) date = addYears(birthday, today.getFullYear() + 1 - birthday.getFullYear());
-    upcoming.push({ label: `🎂 ${p.subject === me ? selfName : partnerName} 생일`, date });
-  });
-  upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const upcoming = upcomingSpecialDays(today, events, profiles.filter((p): p is Profile => Boolean(p)).map((p) => ({ ...p, name: p.subject === me ? selfName : partnerName })), settings);
 
   async function openPartner() {
     if (!me || opening) return;
@@ -92,7 +83,7 @@ export default function UsPage() {
         <span aria-hidden="true" className="absolute -right-5 -top-8 text-[140px] leading-none text-white/50">♡</span>
         <p className="relative text-xs tracking-[0.15em] text-[#a16b7c]">너와 나, 그리고 우리의 오늘</p>
         <div className="relative mt-7 flex items-center justify-center gap-4">
-          <Avatar profile={givenProfile} name={selfName} onClick={() => setView([profiles[0]])} />
+          <Avatar profile={profiles[0]} name={selfName} onClick={() => setView([profiles[0]])} />
           <span aria-hidden="true" className="pb-7 text-2xl text-[#e986a4]">♥</span>
           <Avatar profile={profiles[1]} name={partnerName} onClick={() => void openPartner()} disabled={opening} />
         </div>
@@ -106,14 +97,14 @@ export default function UsPage() {
       {!error && !settings?.date && <Link href="/calendar/settings" className="mt-4 block rounded-2xl bg-white p-4 text-sm text-[#9e4e6b]">사귄 날짜 채우기 →</Link>}
       <section className="mt-7"><h2 className="mb-3 text-base font-bold">곧 찾아올 특별한 날</h2>
         <div className="rounded-3xl bg-white p-5 shadow-sm">
-          {upcoming.length ? upcoming.slice(0, 5).map((event) => <div key={`${event.label}-${event.date.getTime()}`} className="flex items-center justify-between border-b border-[#f7edf1] py-3 first:pt-0 last:border-0 last:pb-0"><div><p className="text-sm font-semibold">{event.label}</p><p className="mt-1 text-xs text-[#b28c99]">{format(event.date, "yyyy.MM.dd")}{event.at !== undefined ? ` · ${event.at ? event.at.slice(0, 5) : "종일"}` : ""}</p></div><span className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-xs font-semibold text-[#ba6582]">{differenceInCalendarDays(event.date, today) === 0 ? "오늘" : `D-${differenceInCalendarDays(event.date, today)}`}</span></div>) : <p className="text-sm leading-6 text-[#ad8291]">우리만의 특별한 날을 기다려요.<br />기념일은 우상단 설정에서, 일정은 캘린더에서 더할 수 있어요.</p>}
+          {upcoming.length ? upcoming.map((event) => <Link href={`/calendar?date=${dateKey(event.date)}`} key={event.id} className="flex items-center justify-between gap-3 border-b border-[#f7edf1] py-3 first:pt-0 last:border-0 last:pb-0"><div className="min-w-0"><p className="break-words text-sm font-semibold">{event.label}</p><p className="mt-1 text-xs text-[#b28c99]">{format(event.date, "yyyy.MM.dd")}{event.at !== undefined ? ` · ${event.at ? event.at.slice(0, 5) : "종일"}` : ""}</p></div><span className="shrink-0 rounded-full bg-[#fff0f5] px-3 py-1.5 text-xs font-semibold text-[#ba6582]">{differenceInCalendarDays(event.date, today) === 0 ? "오늘" : `D-${differenceInCalendarDays(event.date, today)}`}</span></Link>) : <p className="text-sm leading-6 text-[#ad8291]">우리만의 특별한 날을 기다려요.<br />기념일과 일정은 캘린더에서 관리할 수 있어요.</p>}
         </div>
       </section>
-      <div className="mt-5 grid grid-cols-2 gap-3"><Link href="/calendar" className="rounded-3xl bg-[#f0eaf5] p-5"><span aria-hidden="true">✎</span><p className="mt-3 text-sm font-semibold">오늘의 우리 기록</p><p className="mt-1 text-xs text-[#9c879e]">사진과 하루를 남겨요 →</p></Link><Link href="/poke" className="rounded-3xl bg-[#fceadf] p-5"><span aria-hidden="true">♡</span><p className="mt-3 text-sm font-semibold">{partnerName} 생각 중</p><p className="mt-1 text-xs text-[#a88979]">살짝 찌르러 가기 →</p></Link></div>
+      <div className="mt-5 grid grid-cols-2 gap-3"><Link href={`/calendar?date=${todayKey}`} className="rounded-3xl bg-[#f0eaf5] p-5"><span aria-hidden="true">✎</span><p className="mt-3 text-sm font-semibold">오늘의 우리 기록</p><p className="mt-1 text-xs text-[#9c879e]">사진과 하루를 남겨요 →</p></Link><Link href="/poke" className="rounded-3xl bg-[#fceadf] p-5"><span aria-hidden="true">♡</span><p className="mt-3 text-sm font-semibold">{partnerName} 생각 중</p><p className="mt-1 text-xs text-[#a88979]">살짝 찌르러 가기 →</p></Link></div>
       <p className="mt-8 text-center text-xs text-[#bd99a6]">평범한 하루도, 함께라서 특별해.</p>
     </>}
-    {error && <p role="alert" className="mt-4 text-sm text-[#a45270]">{error}</p>}
-    {view && <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 p-5" role="dialog" aria-modal="true" aria-label="소개서 보기"><section className="mx-auto my-8 max-w-md rounded-3xl bg-[#fff7f9] p-5"><button onClick={() => setView(null)} className="mb-5 rounded-full bg-white px-4 py-2 text-sm">닫기</button>{view.map((profile, i) => <article key={i} className="mb-4 rounded-2xl bg-white p-5"><h2 className="mb-4 font-bold">{profile?.subject === me ? `${partnerName}가 쓴 나` : `내가 쓴 ${partnerName}`}</h2>{profile ? <>{profile.photo_path && <img src={photoUrl(profile.photo_path)} alt={`${profile.name} 소개 사진`} className="mb-4 aspect-square w-full rounded-2xl object-cover" />}<h3 className="text-xl font-semibold">{profile.name}</h3><p className="mt-1 text-sm text-[#ab8191]">{profile.birth_date}</p><dl className="mt-5 space-y-4">{([['성격', profile.personality], ['좋아하는 것', profile.likes], ['싫어하는 것', profile.dislikes], ['한줄 소개', profile.intro]]).map(([label, value]) => <div key={label}><dt className="text-xs text-[#b18595]">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{value || "아직 작성하지 않았어요"}</dd></div>)}</dl></> : <p className="text-sm text-[#ab8191]">아직 작성한 소개서가 없어요.</p>}</article>)}</section></div>}
+    {error && <div role="alert" className="mt-4 text-sm text-[#a45270]">{error}<button onClick={() => setRevision((v) => v + 1)} className="ml-2 underline">다시 불러오기</button></div>}
+    {view && <dialog ref={dialog} onCancel={() => setView(null)} onClick={(e) => { if (e.target === e.currentTarget) setView(null); }} className="m-auto max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-[#fff7f9] p-0 backdrop:bg-black/30" aria-label="소개서 보기"><section className="mx-auto max-w-md rounded-3xl bg-[#fff7f9] p-5"><button onClick={() => setView(null)} className="mb-5 rounded-full bg-white px-4 py-2 text-sm">닫기</button>{view.map((profile, i) => <article key={i} className="mb-4 rounded-2xl bg-white p-5"><h2 className="mb-4 font-bold">{profile?.subject === me ? `${partnerName}가 쓴 나` : `내가 쓴 ${partnerName}`}</h2>{profile ? <>{profile.photo_path && <img src={photoUrl(profile.photo_path)} alt={`${profile.name} 소개 사진`} className="mb-4 aspect-square w-full rounded-2xl object-cover" />}<h3 className="text-xl font-semibold">{profile.name}</h3><p className="mt-1 text-sm text-[#ab8191]">{profile.birth_date}</p><dl className="mt-5 space-y-4">{([['성격', profile.personality], ['좋아하는 것', profile.likes], ['싫어하는 것', profile.dislikes], ['한줄 소개', profile.intro]]).map(([label, value]) => <div key={label}><dt className="text-xs text-[#b18595]">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{value || "아직 작성하지 않았어요"}</dd></div>)}</dl></> : <p className="text-sm text-[#ab8191]">아직 작성한 소개서가 없어요.</p>}</article>)}</section></dialog>}
   </main>;
 }
 

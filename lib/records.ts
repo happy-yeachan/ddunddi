@@ -76,7 +76,7 @@ export async function loadDate(key: string) {
 export async function loadMonth(fromKey: string, toKey: string) {
   const { data: rows, error } = await supabase
     .from("dates")
-    .select("id, date, date_photos(path, sort)")
+    .select("id, date, date_photos(path, sort), date_notes(id)")
     .gte("date", fromKey)
     .lte("date", toKey);
   if (error) throw error;
@@ -84,6 +84,7 @@ export async function loadMonth(fromKey: string, toKey: string) {
   const map = new Map<string, { id: string; cover: string | null }>();
   for (const r of rows ?? []) {
     const photos = (r.date_photos ?? []) as { path: string; sort: number }[];
+    if (photos.length === 0 && !r.date_notes?.length) continue;
     const cover = photos.slice().sort((a, b) => a.sort - b.sort)[0]?.path ?? null;
     map.set(r.date as string, { id: r.id as string, cover });
   }
@@ -273,10 +274,11 @@ export async function applyEvents(
   original: EventItem[],
   next: EventDraft[]
 ) {
+  if (next.some((draft) => !draft.title.trim())) throw new Error("일정 제목을 입력하거나 빈 일정을 삭제해주세요.");
   const kept = new Set(next.map((e) => e.id).filter(Boolean) as string[]);
   const removed = original.filter((e) => !kept.has(e.id)).map((e) => e.id);
   if (removed.length > 0) {
-    const { error } = await supabase.from("events").delete().in("id", removed);
+    const { error } = await supabase.from("events").delete().eq("date", key).in("id", removed);
     if (error) throw error;
   }
 
@@ -284,8 +286,8 @@ export async function applyEvents(
     const title = draft.title.trim();
     if (!title) continue;
 
-    if (draft.id) {
-      const before = original.find((e) => e.id === draft.id);
+    const before = original.find((e) => e.id === draft.id);
+    if (draft.id && before) {
       if (
         before &&
         before.title === title &&
@@ -297,13 +299,18 @@ export async function applyEvents(
       }
       const { error } = await supabase
         .from("events")
-        .update({ title, at: draft.at, owner: draft.owner, done: draft.done })
-        .eq("id", draft.id);
+        .update({
+          ...(before.title !== title ? { title } : {}),
+          ...(before.at !== draft.at ? { at: draft.at } : {}),
+          ...(before.owner !== draft.owner ? { owner: draft.owner } : {}),
+          ...(before.done !== draft.done ? { done: draft.done } : {}),
+        })
+        .eq("id", draft.id).eq("date", key);
       if (error) throw error;
     } else {
       const { error } = await supabase
         .from("events")
-        .insert({ date: key, title, at: draft.at, owner: draft.owner, done: draft.done, author });
+        .upsert({ id: draft.id ?? crypto.randomUUID(), date: key, title, at: draft.at, owner: draft.owner, done: draft.done, author }, { onConflict: "id" });
       if (error) throw error;
     }
   }

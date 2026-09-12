@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --test tests/calendar-home.test.cjs",
     "start": "next start",
     "icons": "node scripts/make-icons.mjs",
     "db:push": "node --env-file=.env.local scripts/db-push.mjs"

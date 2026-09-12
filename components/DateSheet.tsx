@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { photoUrl } from "@/lib/supabase";
 import { PEOPLE, nameOf, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
+import { useToday } from "@/lib/use-today";
 import {
   applyEvents,
   deleteNote,
@@ -34,7 +35,9 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const fileInput = useRef<HTMLInputElement>(null);
   const partner = PEOPLE.find((p) => p.id !== me)!.id;
   // 아직 오지 않은 날에는 일기를 쓰지 않는다. 일정은 앞날에도 잡을 수 있다.
-  const isFuture = dateKey > todayKey();
+  const today = useToday();
+  const isFuture = dateKey > today;
+  const saveLock = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -56,10 +59,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const [progress, setProgress] = useState<Progress>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setLoadFailed(false); setError("");
     Promise.all([loadDate(dateKey), loadDayEvents(dateKey)])
       .then(([{ photos, notes }, evs]) => {
         if (!alive) return;
@@ -73,12 +79,12 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         // 아무것도 없는 날은 보여줄 것이 없으니 바로 쓰는 화면으로 연다.
         if (photos.length === 0 && notes.length === 0 && evs.length === 0) setMode("edit");
       })
-      .catch((e) => alive && setError(e.message ?? "불러오지 못했어요"))
+      .catch((e) => { if (alive) { setLoadFailed(true); setError(e.message ?? "불러오지 못했어요"); } })
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [dateKey, me]);
+  }, [dateKey, me, retry]);
 
   // 상대 이름은 내가 쓴 소개서의 이름을 우선한다.
   useEffect(() => {
@@ -114,28 +120,35 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   );
 
   async function save() {
-    if (saving || !dirty) return;
+    if (saveLock.current || loading || loadFailed || !dirty) return;
+    if (eventDraft.some((event) => !event.title.trim())) { setError("일정 제목을 입력하거나 빈 일정을 삭제해주세요."); return; }
+    saveLock.current = true;
     setSaving(true);
     setError("");
 
     try {
-      const dateId = await ensureDate(dateKey);
+      const noteChanged = !isFuture && draft !== saved;
+      const dateId = !isFuture && (picked.length > 0 || (noteChanged && draft.trim())) ? await ensureDate(dateKey) : null;
 
       // 지우기부터. 올리기 전에 치워야 사진 순서가 꼬이지 않는다.
       for (const id of isFuture ? [] : doomed) {
         const photo = photos.find((p) => p.id === id);
         if (photo) await deletePhoto(photo);
+        setPhotos((prev) => prev.filter((p) => p.id !== id));
+        setDoomed((prev) => prev.filter((value) => value !== id));
       }
 
       if (!isFuture && picked.length > 0) {
         setProgress({ done: 0, total: picked.length });
         // 한 장씩 올린다. 동시에 올리면 진행 표시가 의미를 잃고
         // 모바일 회선에서 오히려 느려진다.
-        const base = photos.length - doomed.length;
+        const base = Math.max(-1, ...photos.filter((p) => !doomed.includes(p.id)).map((p) => p.sort)) + 1;
         for (const [i, file] of picked.entries()) {
           try {
             const blob = await resizeImage(file);
-            await uploadPhoto(dateKey, dateId, blob, base + i);
+            await uploadPhoto(dateKey, dateId!, blob, base + i);
+            // 완료된 사진은 대기열에서 즉시 빼서 이후 실패·재시도에 중복 업로드하지 않는다.
+            setPicked((prev) => { const at = prev.indexOf(file); return at < 0 ? prev : prev.filter((_, index) => index !== at); });
           } catch (e) {
             const why = e instanceof Error ? e.message : "알 수 없는 오류";
             throw new Error(`${i + 1}번째 사진에서 멈췄어요 — ${why}`);
@@ -144,13 +157,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         }
       }
 
-      await applyEvents(dateKey, me, events, eventDraft);
+      if (eventsChanged) await applyEvents(dateKey, me, events, eventDraft);
 
       const text = isFuture ? "" : draft.trim();
       const mine = notes.find((n) => n.author === me);
-      if (text) {
+      if (noteChanged && text && dateId) {
         await upsertNote(dateId, me, text);
-      } else if (mine) {
+      } else if (noteChanged && mine) {
         // 일기를 비우고 저장하면 지운다는 뜻이다.
         await deleteNote(mine.id);
       }
@@ -173,12 +186,23 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     } catch (e) {
       setError(e instanceof Error ? e.message : "저장에 실패했어요");
       setProgress(null);
+      // 부분 성공한 작업을 다시 보내지 않도록 DB 상태와 기준값만 맞춘다.
+      // 아직 저장하지 못한 입력·사진 선택은 그대로 둔다.
+      const [fresh, freshEvents] = await Promise.allSettled([loadDate(dateKey), loadDayEvents(dateKey)]);
+      if (fresh.status === "fulfilled") {
+        setPhotos(fresh.value.photos); setNotes(fresh.value.notes);
+        setSaved(fresh.value.notes.find((note) => note.author === me)?.body ?? "");
+      }
+      if (freshEvents.status === "fulfilled") setEvents(freshEvents.value);
+      onSaved();
     } finally {
+      saveLock.current = false;
       setSaving(false);
     }
   }
 
   function close() {
+    if (saveLock.current) return;
     if (mode === "edit" && dirty && !confirm("저장하지 않은 변경이 있어요. 닫을까요?")) return;
     onClose();
   }
@@ -204,7 +228,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
         <header className="flex items-center justify-between px-5 pb-3">
           <h2 className="text-lg font-bold">{label}</h2>
-          {!loading && mode === "view" && (
+          {!loading && !loadFailed && mode === "view" && (
             <button
               onClick={() => setMode("edit")}
               className="rounded-full border border-[#f5d0da] bg-white px-4 py-1.5 text-sm font-medium text-[#c9788f] transition active:scale-95"
@@ -214,7 +238,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
           )}
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5">
+        <fieldset disabled={saving || loadFailed} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5">
           {loading ? (
             <p className="py-10 text-center text-sm text-[#bda5ae]">불러오는 중…</p>
           ) : mode === "view" ? (
@@ -332,7 +356,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                   onClick={() =>
                     setEventDraft((prev) => [
                       ...prev,
-                      { id: null, at: null, title: "", owner: "both", done: false },
+                      { id: crypto.randomUUID(), at: null, title: "", owner: "both", done: false },
                     ])
                   }
                   className="mt-2 w-full rounded-xl border border-dashed border-[#f0cdd8] py-2.5 text-sm text-[#c9788f] transition active:scale-[0.99]"
@@ -470,7 +494,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
               </section>
             </>
           )}
-        </div>
+        </fieldset>
 
         <div className="px-5 pb-4 pt-3">
           {error && (
@@ -478,6 +502,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
               {error}
             </p>
           )}
+          {loadFailed && <button onClick={() => setRetry((v) => v + 1)} className="mb-3 text-sm underline">다시 불러오기</button>}
 
           {progress && (
             <div className="mb-2">
@@ -514,7 +539,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
               </button>
               <button
                 onClick={save}
-                disabled={saving || !dirty}
+                disabled={saving || loading || loadFailed || !dirty}
                 className="flex-1 rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
               >
                 {saving
@@ -661,12 +686,6 @@ function Diary({
       )}
     </section>
   );
-}
-
-function todayKey() {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 // 일정 색. 캘린더 범례와 같은 값을 쓴다.

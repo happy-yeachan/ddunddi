@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { addDays, addMonths, differenceInCalendarDays, endOfMonth, parseISO, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
+import { addDays, addMonths, endOfMonth, parseISO, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import DateSheet, { OWNER_COLOR } from "@/components/DateSheet";
 import {
   dateKey,
@@ -16,10 +17,23 @@ import { photoUrl } from "@/lib/supabase";
 import { readMe, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
 import { loadRelationshipDate } from "@/lib/settings";
+import { anniversaryLabels, isBirthdayOn, parseDay } from "@/lib/calendar-dates";
+import { useToday } from "@/lib/use-today";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 export default function CalendarPage() {
+  return <Suspense fallback={<p className="py-10 text-center">캘린더를 불러오는 중…</p>}><CalendarContent /></Suspense>;
+}
+
+function CalendarContent() {
+  const searchParams = useSearchParams();
+  const requestedDate = searchParams.get("date");
+  const todayKey = useToday();
+  const [revision, setRevision] = useState(0);
+  const requestId = useRef(0);
+  const [dataError, setDataError] = useState("");
+  const [dataLoading, setDataLoading] = useState(true);
   // 보고 있는 달. 날짜가 아니라 달만 의미 있으므로 항상 1일로 맞춘다.
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState<Date | null>(null);
@@ -40,6 +54,15 @@ export default function CalendarPage() {
   // 레이아웃 가드가 이미 통과시킨 뒤라 값이 있다.
   useEffect(() => setMe(readMe()), []);
   useEffect(() => {
+    const day = parseDay(requestedDate);
+    if (day) { setCursor(startOfMonth(day)); setSelected(day); }
+  }, [requestedDate]);
+  useEffect(() => {
+    const refreshOnFocus = () => { if (document.visibilityState === "visible") setRevision((v) => v + 1); };
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, []);
+  useEffect(() => {
     if (!me) return;
     const other = (me === "yeachan" ? "daeun" : "yeachan") as PersonId;
     let alive = true;
@@ -54,7 +77,7 @@ export default function CalendarPage() {
       } else setSettingsError("기념일 설정을 불러오지 못했어요. 저장 상태를 확인해주세요.");
     });
     return () => { alive = false; };
-  }, [me]);
+  }, [me, revision]);
 
 
   // 6주 42칸. 달마다 칸 수가 바뀌면 높이가 출렁이므로 항상 42칸으로 고정한다.
@@ -67,44 +90,55 @@ export default function CalendarPage() {
     const controller = new AbortController();
     const years = [...new Set(days.map((day) => day.getFullYear()))];
     setHolidays({}); setHolidayError("");
-    Promise.all(years.map(async (year) => {
+    Promise.allSettled(years.map(async (year) => {
       const response = await fetch(`/api/holidays?year=${year}`, { signal: controller.signal });
       if (!response.ok) throw new Error("공휴일 조회 실패");
       return await response.json() as Record<string, string[]>;
-    })).then((data) => { if (!controller.signal.aborted) setHolidays(Object.assign({}, ...data)); })
-      .catch(() => { if (!controller.signal.aborted) setHolidayError("공휴일 정보를 불러오지 못했어요. 해당 연도 자료가 아직 없을 수 있어요."); });
+    })).then((results) => {
+      if (controller.signal.aborted) return;
+      setHolidays(Object.assign({}, ...results.flatMap((r) => r.status === "fulfilled" ? [r.value] : [])));
+      const unavailable = years.filter((_, i) => results[i].status === "rejected");
+      if (unavailable.length) setHolidayError(`${unavailable.join(", ")}년 공휴일 정보를 불러오지 못했어요. 확인된 연도는 표시합니다.`);
+    });
     return () => controller.abort();
-  }, [days]);
+  }, [days, revision]);
 
   // 이번 달이 아니라 화면에 보이는 42칸 범위를 통째로 읽는다. 앞뒤 달 칸에도
   // 기록이 있으면 썸네일이 보여야 한다.
   const refresh = useCallback(async () => {
+    const current = ++requestId.current;
+    setDataLoading(true); setDataError("");
+    setCovers(new Map()); setDayEvents(new Map()); setSummary(null);
     const from = dateKey(days[0]);
     const to = dateKey(days[41]);
     // 격자는 앞뒤 달 칸을 포함하지만 요약은 그 달만 센다.
     const monthFrom = dateKey(startOfMonth(cursor));
     const monthTo = dateKey(endOfMonth(cursor));
 
-    const [month, events, stats] = await Promise.all([
-      loadMonth(from, to).catch(() => new Map()),
-      loadEvents(from, to).catch(() => new Map()),
-      loadMonthSummary(monthFrom, monthTo).catch(() => null),
+    const [month, events, stats] = await Promise.allSettled([
+      loadMonth(from, to),
+      loadEvents(from, to),
+      loadMonthSummary(monthFrom, monthTo),
     ]);
     // 부가 정보다. 하나가 실패해도 캘린더 자체는 계속 쓸 수 있어야 한다.
-    setCovers(month);
-    setDayEvents(events);
-    setSummary(stats);
+    if (current !== requestId.current) return;
+    setCovers(month.status === "fulfilled" ? month.value : new Map());
+    setDayEvents(events.status === "fulfilled" ? events.value : new Map());
+    setSummary(stats.status === "fulfilled" ? stats.value : null);
+    if ([month, events, stats].some((r) => r.status === "rejected")) setDataError("일부 기록을 불러오지 못했어요.");
+    setDataLoading(false);
   }, [days, cursor]);
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    return () => { requestId.current++; };
+  }, [refresh, revision]);
 
-  const today = new Date();
+  const today = parseISO(todayKey);
 
   return (
     <main className="mx-auto max-w-md px-4 pt-[calc(1rem+env(safe-area-inset-top))]">
-      <div className="flex justify-end"><Link href="/calendar/settings" aria-label="캘린더 설정" className="rounded-full bg-white px-4 py-2 text-sm text-[#a45d73]">⚙ 설정</Link></div>
+      <div className="flex justify-between"><button onClick={() => setCursor(startOfMonth(today))} className="rounded-full bg-white px-4 py-2 text-sm text-[#a45d73]">이번 달</button><Link href="/calendar/settings" aria-label="캘린더 설정" className="rounded-full bg-white px-4 py-2 text-sm text-[#a45d73]">⚙ 설정</Link></div>
       <header className="flex items-center justify-between py-3">
         <button
           onClick={() => setCursor((c) => addMonths(c, -1))}
@@ -122,6 +156,8 @@ export default function CalendarPage() {
       </header>
       {settingsError && <p role="alert" className="mb-3 text-sm text-[#a45270]">{settingsError}</p>}
       {holidayError && <p role="status" className="mb-3 text-xs text-[#a45270]">{holidayError}</p>}
+      {(dataError || settingsError || holidayError) && <div className="mb-3 text-sm text-[#a45270]">{dataError}<button onClick={() => setRevision((v) => v + 1)} className="ml-2 underline">다시 불러오기</button></div>}
+      <p role="status" className="mb-1 min-h-4 text-center text-xs text-[#bda5ae]">{dataLoading ? "기록을 불러오는 중…" : ""}</p>
 
       <div className="grid grid-cols-7">
         {WEEKDAYS.map((w, i) => (
@@ -145,18 +181,10 @@ export default function CalendarPage() {
           const entry = covers.get(dKey);
           const cover = entry?.cover ?? null;
           const evs = dayEvents.get(dKey) ?? [];
-          const key = dateKey(day).slice(5);
-          const isBirthday = showBirthdays && birthdays.some((date) => date.slice(5) === key);
-          const start = relationshipDate ? parseISO(relationshipDate) : null;
-          const anniversaryDays = start ? differenceInCalendarDays(day, start) + 1 : 0;
+          const isBirthday = showBirthdays && birthdays.some((date) => isBirthdayOn(date, day));
           const holidayNames = holidays[dKey] ?? [];
           const labels: string[] = isBirthday ? ["🎂"] : [];
-          if (showAnniversaries && start && anniversaryDays > 0) {
-            if (anniversaryDays === 1) labels.push("♥ 사귄 날");
-            if (anniversaryDays % 100 === 0) labels.push(`${anniversaryDays}일`);
-            const years = day.getFullYear() - start.getFullYear();
-            if (years > 0 && day.getMonth() === start.getMonth() && day.getDate() === start.getDate()) labels.push(`${years}주년`);
-          }
+          if (showAnniversaries) labels.push(...anniversaryLabels(relationshipDate, day));
           const eventLabel = labels.join(" · ");
 
           return (
@@ -270,6 +298,7 @@ export default function CalendarPage() {
 
       {selected && me && (
         <DateSheet
+          key={dateKey(selected)}
           dateKey={dateKey(selected)}
           label={`${selected.getMonth() + 1}월 ${selected.getDate()}일`}
           me={me}
