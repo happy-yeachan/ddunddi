@@ -206,19 +206,21 @@ export default function CalendarPage() {
               <span
                 className={[
                   "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-                  "relative",
                   isSelected ? "" : holidayNames.length || day.getDay() === 0 ? (cover ? "rounded bg-white/95 px-1 font-semibold text-red-600" : "font-semibold text-red-600") : cover ? "font-semibold text-white" : day.getDay() === 6 ? "text-[#6684b5]" : "",
                 ].join(" ")}
               >
                 {day.getDate()}
-                {entry && (
-                  <span
-                    className={`absolute -bottom-1 left-1/2 h-[2px] w-3 -translate-x-1/2 rounded-full ${
-                      cover ? "bg-white" : "bg-[#ff8fab]"
-                    }`}
-                  />
-                )}
               </span>
+
+              {/* 일기 밑줄. 숫자 span 은 absolute 로 가운데 고정돼 있어
+                  그 안에 넣으면 position 이 충돌한다. 형제로 둔다. */}
+              {entry && (
+                <span
+                  className={`absolute left-1/2 top-[64%] h-[2px] w-3 -translate-x-1/2 rounded-full ${
+                    cover ? "bg-white" : "bg-[#ff8fab]"
+                  }`}
+                />
+              )}
               {eventLabel && <span title={eventLabel} className="absolute inset-x-0 bottom-0 rounded bg-white/95 px-0.5 text-[9px] leading-tight text-[#a84367]">{eventLabel}</span>}
             </button>
           );
