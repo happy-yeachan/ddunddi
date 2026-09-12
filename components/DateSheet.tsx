@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { photoUrl } from "@/lib/supabase";
 import { nameOf, type PersonId } from "@/lib/me";
+import { loadProfile } from "@/lib/profiles";
 import {
   loadDate,
   resizeImage,
@@ -28,6 +29,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [memo, setMemo] = useState("");
   const [author, setAuthor] = useState<string | null>(null);
+  const [authorLabel, setAuthorLabel] = useState<string | null>(null);
 
   const [picked, setPicked] = useState<File[]>([]);
   const [progress, setProgress] = useState<Progress>(null);
@@ -50,6 +52,21 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
       alive = false;
     };
   }, [dateKey]);
+
+  useEffect(() => {
+    if (!author) {
+      setAuthorLabel(null);
+      return;
+    }
+    const id = author as PersonId;
+    setAuthorLabel(nameOf(id));
+    if (id === me) return;
+    let alive = true;
+    loadProfile(me, id).then((profile) => {
+      if (alive && profile?.name.trim()) setAuthorLabel(profile.name.trim());
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [author, me]);
 
   async function save() {
     if (saving) return;
@@ -107,8 +124,8 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
         <header className="flex items-baseline justify-between px-5 pb-3">
           <h2 className="text-lg font-bold">{label}</h2>
-          {author && (
-            <span className="text-xs text-[#bda5ae]">{nameOf(author as PersonId)}가 씀</span>
+          {authorLabel && (
+            <span className="text-xs text-[#bda5ae]">{authorLabel}가 씀</span>
           )}
         </header>
 
