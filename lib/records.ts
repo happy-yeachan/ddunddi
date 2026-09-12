@@ -71,27 +71,76 @@ export async function saveMemo(key: string, body: string, author: PersonId) {
 // 긴 변 기준으로 줄여 JPEG 로 만든다. 원본을 그대로 올리면 폰 사진 한 장이
 // 수 MB 라 업로드가 하염없이 길어진다.
 export async function resizeImage(file: File, maxEdge = 1600): Promise<Blob> {
-  // imageOrientation 을 주지 않으면 세로로 찍은 사진이 눕는다.
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(1, Math.round(bitmap.width * scale));
-  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const { source, width, height, release } = await decode(file);
+  try {
+    const scale = Math.min(1, maxEdge / Math.max(width, height));
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
 
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("캔버스를 만들 수 없어요");
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("캔버스를 만들 수 없어요");
+    ctx.drawImage(source, 0, 0, w, h);
 
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("이미지 변환에 실패했어요"))),
-      "image/jpeg",
-      0.85
-    )
-  );
+    return await new Promise((resolve, reject) =>
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error(`${file.name} 변환에 실패했어요`))),
+        "image/jpeg",
+        0.85
+      )
+    );
+  } finally {
+    release();
+  }
+}
+
+type Decoded = {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
+};
+
+// 디코딩 경로를 세 단계로 두고 순서대로 떨어진다.
+// createImageBitmap 은 빠르지만 iOS Safari 가 옵션 인자를 거부하며 던지는
+// 경우가 있어 옵션 없이 한 번 더 시도하고, 그것도 실패하면 <img> 로 간다.
+// <img> 는 브라우저가 EXIF 회전을 알아서 적용하므로 사진이 눕지 않는다.
+async function decode(file: File): Promise<Decoded> {
+  for (const opts of [{ imageOrientation: "from-image" } as const, undefined]) {
+    try {
+      const bitmap = opts
+        ? await createImageBitmap(file, opts)
+        : await createImageBitmap(file);
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        release: () => bitmap.close(),
+      };
+    } catch {
+      // 다음 경로로
+    }
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return {
+      source: img,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      release: () => URL.revokeObjectURL(url),
+    };
+  } catch {
+    URL.revokeObjectURL(url);
+    throw new Error(
+      `${file.name} 을(를) 읽지 못했어요. 아이폰 HEIC 사진이면 설정에서 "높은 호환성"으로 찍거나 JPEG 로 바꿔서 올려주세요`
+    );
+  }
 }
 
 export async function uploadPhoto(key: string, dateId: string, blob: Blob, sort: number) {

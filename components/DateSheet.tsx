@@ -65,8 +65,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         // 모바일 회선에서 오히려 느려진다.
         let sort = photos.length;
         for (const [i, file] of picked.entries()) {
-          const blob = await resizeImage(file);
-          await uploadPhoto(dateKey, dateId, blob, sort + i);
+          try {
+            const blob = await resizeImage(file);
+            await uploadPhoto(dateKey, dateId, blob, sort + i);
+          } catch (e) {
+            const why = e instanceof Error ? e.message : "알 수 없는 오류";
+            throw new Error(`${i + 1}번째 사진에서 멈췄어요 — ${why}`);
+          }
           setProgress({ done: i + 1, total: picked.length });
         }
       }
@@ -167,10 +172,14 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             </>
           )}
 
-          {error && <p className="mt-2 text-sm text-[#e05c7e]">{error}</p>}
         </div>
 
         <div className="px-5 pb-4 pt-3">
+          {error && (
+            <p className="mb-2 rounded-xl bg-[#ffe8ee] px-3 py-2 text-sm text-[#c94a6c]">
+              {error}
+            </p>
+          )}
           {progress && (
             <div className="mb-2">
               <div className="mb-1 flex justify-between text-xs text-[#bda5ae]">
