@@ -27,6 +27,27 @@ create table if not exists public.date_photos (
   created_at timestamptz not null default now()
 );
 
+-- 날짜별 메모. 한 날에 두 사람이 각각 여러 개 남길 수 있다.
+-- dates.body 는 건드리지 않는다. 나중에 AI 일기 본문이 들어갈 자리다.
+create table if not exists public.date_notes (
+  id         uuid primary key default gen_random_uuid(),
+  date_id    uuid not null references public.dates(id) on delete cascade,
+  author     text not null check (author in ('yeachan', 'daeun')),
+  body       text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists date_notes_date_id_created_idx
+  on public.date_notes (date_id, created_at);
+
+-- 예전에 dates.body 한 칸에 덮어쓰던 메모를 옮긴다. 이미 옮긴 날짜는 건너뛴다.
+insert into public.date_notes (date_id, author, body, created_at)
+select d.id, coalesce(d.author, 'yeachan'), d.body, d.created_at
+from public.dates d
+where d.body is not null
+  and btrim(d.body) <> ''
+  and not exists (select 1 from public.date_notes n where n.date_id = d.id);
+
 -- 캘린더는 "그 달 범위의 날짜 + 각 날짜의 첫 사진"을 한 번에 읽는다.
 create index if not exists dates_date_idx on public.dates (date);
 create index if not exists date_photos_date_id_sort_idx on public.date_photos (date_id, sort);
@@ -69,11 +90,13 @@ create index if not exists profiles_author_subject_idx on public.profiles (autho
 -- anon key 는 브라우저 번들에 들어가므로 사실상 공개된 값이다. README 참고.
 alter table public.dates       enable row level security;
 alter table public.date_photos enable row level security;
+alter table public.date_notes  enable row level security;
 alter table public.pokes       enable row level security;
 alter table public.profiles    enable row level security;
 
 drop policy if exists "dates anon all"       on public.dates;
 drop policy if exists "date_photos anon all" on public.date_photos;
+drop policy if exists "date_notes anon all"  on public.date_notes;
 drop policy if exists "pokes anon all"       on public.pokes;
 drop policy if exists "profiles anon all"    on public.profiles;
 
@@ -84,6 +107,11 @@ create policy "dates anon all"
 
 create policy "date_photos anon all"
   on public.date_photos for all
+  to anon, authenticated
+  using (true) with check (true);
+
+create policy "date_notes anon all"
+  on public.date_notes for all
   to anon, authenticated
   using (true) with check (true);
 

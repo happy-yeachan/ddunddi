@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { photoUrl } from "@/lib/supabase";
-import { nameOf, type PersonId } from "@/lib/me";
+import { PEOPLE, nameOf, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
 import {
+  addNote,
+  deleteNote,
   deletePhoto,
+  ensureDate,
   loadDate,
   resizeImage,
-  saveMemo,
   uploadPhoto,
+  type Note,
   type Photo,
 } from "@/lib/records";
 
@@ -28,9 +31,10 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
   const [loading, setLoading] = useState(true);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [memo, setMemo] = useState("");
-  const [author, setAuthor] = useState<string | null>(null);
-  const [authorLabel, setAuthorLabel] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [draft, setDraft] = useState("");
+  // 상대 이름은 내가 쓴 소개서의 이름을 우선한다. 없으면 기본 이름.
+  const [partnerLabel, setPartnerLabel] = useState<string>("");
 
   const [picked, setPicked] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -45,11 +49,10 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     let alive = true;
     setLoading(true);
     loadDate(dateKey)
-      .then(({ record, photos }) => {
+      .then(({ photos, notes }) => {
         if (!alive) return;
-        setMemo(record?.body ?? "");
-        setAuthor(record?.author ?? null);
         setPhotos(photos);
+        setNotes(notes);
       })
       .catch((e) => alive && setError(e.message ?? "불러오지 못했어요"))
       .finally(() => alive && setLoading(false));
@@ -58,20 +61,20 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     };
   }, [dateKey]);
 
+  const partner = PEOPLE.find((p) => p.id !== me)!.id;
+
   useEffect(() => {
-    if (!author) {
-      setAuthorLabel(null);
-      return;
-    }
-    const id = author as PersonId;
-    setAuthorLabel(nameOf(id));
-    if (id === me) return;
+    setPartnerLabel(nameOf(partner));
     let alive = true;
-    loadProfile(me, id).then((profile) => {
-      if (alive && profile?.name.trim()) setAuthorLabel(profile.name.trim());
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, [author, me]);
+    loadProfile(me, partner)
+      .then((profile) => {
+        if (alive && profile?.name.trim()) setPartnerLabel(profile.name.trim());
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [me, partner]);
 
   // 고른 파일의 미리보기. objectURL 은 직접 해제하지 않으면 메모리에 남는다.
   useEffect(() => {
@@ -98,13 +101,31 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     }
   }
 
+  async function removeNote(id: string) {
+    if (!confirm("이 메모를 지울까요?")) return;
+    try {
+      await deleteNote(id);
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "메모를 지우지 못했어요");
+    }
+  }
+
   async function save() {
     if (saving) return;
     setSaving(true);
     setError("");
 
     try {
-      const dateId = await saveMemo(dateKey, memo, me);
+      const dateId = await ensureDate(dateKey);
+
+      const text = draft.trim();
+      if (text) {
+        const note = await addNote(dateId, me, text);
+        setNotes((prev) => [...prev, note]);
+        setDraft("");
+      }
 
       if (picked.length > 0) {
         setProgress({ done: 0, total: picked.length });
@@ -127,7 +148,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
       setProgress(null);
       const fresh = await loadDate(dateKey);
       setPhotos(fresh.photos);
-      setAuthor(fresh.record?.author ?? null);
+      setNotes(fresh.notes);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "저장에 실패했어요");
@@ -137,7 +158,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     }
   }
 
-  const dirty = picked.length > 0 || !loading;
+  const dirty = picked.length > 0 || draft.trim().length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
@@ -154,9 +175,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
         <header className="flex items-baseline justify-between px-5 pb-3">
           <h2 className="text-lg font-bold">{label}</h2>
-          {authorLabel && (
-            <span className="text-xs text-[#bda5ae]">{authorLabel}가 씀</span>
-          )}
+
         </header>
 
         <div className="flex-1 overflow-y-auto px-5">
@@ -242,12 +261,46 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 }}
               />
 
+              <div className="mt-4 space-y-2">
+                {notes.map((n) => {
+                  const mine = n.author === me;
+                  return (
+                    <div
+                      key={n.id}
+                      className={`flex flex-col ${mine ? "items-end" : "items-start"}`}
+                    >
+                      <span className="mb-0.5 px-1 text-[11px] text-[#bda5ae]">
+                        {mine ? "나" : partnerLabel}
+                      </span>
+                      <div
+                        className={`group relative max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm ${
+                          mine
+                            ? "bg-[#ff8fab] text-white"
+                            : "border border-[#f5d0da] bg-white"
+                        }`}
+                      >
+                        {n.body}
+                        {mine && (
+                          <button
+                            onClick={() => removeNote(n.id)}
+                            aria-label="지우기"
+                            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 text-[10px] text-white"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               <textarea
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
                 placeholder="한 줄 남기기"
-                rows={3}
-                className="mt-4 w-full resize-none rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
+                rows={2}
+                className="mt-3 w-full resize-none rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
               />
             </>
           )}

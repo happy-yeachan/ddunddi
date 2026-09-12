@@ -12,6 +12,13 @@ export type DateRecord = {
 
 export type Photo = { id: string; path: string; sort: number };
 
+export type Note = {
+  id: string;
+  author: PersonId;
+  body: string;
+  created_at: string;
+};
+
 // Date → 'yyyy-MM-dd'. toISOString() 은 UTC 로 바꾸면서 한국 시간 자정 근처의
 // 날짜를 하루 밀어버리므로 쓰지 않는다.
 export function dateKey(d: Date) {
@@ -25,16 +32,28 @@ export async function loadDate(key: string) {
     .eq("date", key)
     .maybeSingle();
   if (error) throw error;
-  if (!record) return { record: null, photos: [] as Photo[] };
+  if (!record) return { record: null, photos: [] as Photo[], notes: [] as Note[] };
 
-  const { data: photos, error: pErr } = await supabase
-    .from("date_photos")
-    .select("id, path, sort")
-    .eq("date_id", record.id)
-    .order("sort", { ascending: true });
-  if (pErr) throw pErr;
+  const [photosRes, notesRes] = await Promise.all([
+    supabase
+      .from("date_photos")
+      .select("id, path, sort")
+      .eq("date_id", record.id)
+      .order("sort", { ascending: true }),
+    supabase
+      .from("date_notes")
+      .select("id, author, body, created_at")
+      .eq("date_id", record.id)
+      .order("created_at", { ascending: true }),
+  ]);
+  if (photosRes.error) throw photosRes.error;
+  if (notesRes.error) throw notesRes.error;
 
-  return { record: record as DateRecord, photos: (photos ?? []) as Photo[] };
+  return {
+    record: record as DateRecord,
+    photos: (photosRes.data ?? []) as Photo[],
+    notes: (notesRes.data ?? []) as Note[],
+  };
 }
 
 // 그 달 범위의 기록과 각 날짜의 첫 사진. 7단계 캘린더 썸네일이 쓴다.
@@ -55,17 +74,31 @@ export async function loadMonth(fromKey: string, toKey: string) {
   return map;
 }
 
-export async function saveMemo(key: string, body: string, author: PersonId) {
+// 그 날짜의 행을 확보하고 id 를 돌려준다. 사진과 메모가 모두 이 id 를 쓴다.
+// dates.body 는 건드리지 않는다. 나중에 AI 일기 본문이 들어갈 자리다.
+export async function ensureDate(key: string) {
   const { data, error } = await supabase
     .from("dates")
-    .upsert(
-      { date: key, body, author, body_source: "human" },
-      { onConflict: "date" }
-    )
+    .upsert({ date: key }, { onConflict: "date", ignoreDuplicates: false })
     .select("id")
     .single();
   if (error) throw error;
   return data.id as string;
+}
+
+export async function addNote(dateId: string, author: PersonId, body: string) {
+  const { data, error } = await supabase
+    .from("date_notes")
+    .insert({ date_id: dateId, author, body })
+    .select("id, author, body, created_at")
+    .single();
+  if (error) throw error;
+  return data as Note;
+}
+
+export async function deleteNote(id: string) {
+  const { error } = await supabase.from("date_notes").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // 긴 변 기준으로 줄여 JPEG 로 만든다. 원본을 그대로 올리면 폰 사진 한 장이
