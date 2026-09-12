@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { nameOf, PEOPLE, readMe, type PersonId } from "@/lib/me";
 import { loadProfile, saveProfile, uploadProfilePhoto, type Profile } from "@/lib/profiles";
 import { photoUrl } from "@/lib/supabase";
@@ -11,6 +12,7 @@ const copyForm = (p: Profile | null): Form => p ? { photo_path: p.photo_path, na
 const complete = (p: Form) => Boolean(p.photo_path && p.name.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.birth_date));
 
 export default function UsPage() {
+  const router = useRouter();
   const [me, setMe] = useState<PersonId | null>(null);
   const [subject, setSubject] = useState<PersonId | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
@@ -44,14 +46,15 @@ export default function UsPage() {
     }
     try {
       await saveProfile({ ...form, author: me, subject });
-      if (subject !== me) {
-        const self = await loadProfile(me, me);
-        if (!self || !complete(copyForm(self))) {
-          window.alert("내가 쓰는 나를 작성해주세요");
-          setSubject(me);
-          return;
-        }
+      const other = PEOPLE.find((p) => p.id !== me)!.id;
+      const next = subject === me ? other : me;
+      const nextProfile = await loadProfile(me, next);
+      if (!nextProfile || !complete(copyForm(nextProfile))) {
+        window.alert(`내가 쓰는 ${next === me ? "나" : nameOf(next)}를 작성해주세요`);
+        setSubject(next);
+        return;
       }
+      router.replace("/calendar");
       setMessage("소개서를 저장했어요");
     }
     catch { setMessage("저장하지 못했어요. 잠시 후 다시 시도해주세요"); }
@@ -72,7 +75,7 @@ export default function UsPage() {
     {loading ? <div className="py-16 text-center text-sm text-[#c5a8b2]">불러오는 중…</div> : <form onSubmit={submit} className="space-y-4">
       <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
       <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
-      <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", e.target.value)} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
+      <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", formatDateInput(e.target.value))} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
       <Field label="성격" value={form.personality} onChange={(v) => change("personality", v)} placeholder="어떤 사람인가요?" area />
       <Field label="좋아하는 것" value={form.likes} onChange={(v) => change("likes", v)} placeholder="좋아하는 것을 적어주세요" area />
       <Field label="싫어하는 것" value={form.dislikes} onChange={(v) => change("dislikes", v)} placeholder="싫어하는 것을 적어주세요" area />
@@ -81,6 +84,11 @@ export default function UsPage() {
       {message && <p className="text-center text-sm text-[#e05c7e]">{message}</p>}
     </form>}
   </main>;
+}
+
+function formatDateInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  return [digits.slice(0, 4), digits.slice(4, 6), digits.slice(6, 8)].filter(Boolean).join("-");
 }
 
 function Field({ label, value, onChange, placeholder, area }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; area?: boolean }) {
