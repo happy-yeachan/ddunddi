@@ -1,0 +1,26 @@
+{
+  "name": "뚠띠뚠띠",
+  "short_name": "뚠띠뚠띠",
+  "description": "예찬과 다은의 기록",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff7f9",
+  "theme_color": "#ff8fab",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
