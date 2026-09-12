@@ -12,6 +12,16 @@ export type DateRecord = {
 
 export type Photo = { id: string; path: string; sort: number };
 
+// 함께 보는 일정. at 이 없으면 하루 종일.
+export type EventItem = {
+  id: string;
+  date: string;
+  at: string | null;
+  title: string;
+  author: PersonId | null;
+  done: boolean;
+};
+
 // 하루에 사람마다 한 편. 고쳐 쓸 수 있다.
 export type Note = {
   id: string;
@@ -207,4 +217,97 @@ export async function deletePhoto(photo: Photo) {
 
   const { error: rmErr } = await supabase.storage.from(PHOTO_BUCKET).remove([photo.path]);
   if (rmErr) console.warn("스토리지 파일 삭제 실패:", photo.path, rmErr.message);
+}
+
+const EVENT_COLS = "id, date, at, title, author, done";
+
+function sortEvents(list: EventItem[]) {
+  // 시각이 있는 것이 먼저, 그 안에서 이른 순. 하루 종일은 뒤로 보낸다.
+  return list.slice().sort((a, b) => {
+    if (a.at && b.at) return a.at.localeCompare(b.at);
+    if (a.at) return -1;
+    if (b.at) return 1;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+export async function loadEvents(fromKey: string, toKey: string) {
+  const { data, error } = await supabase
+    .from("events")
+    .select(EVENT_COLS)
+    .gte("date", fromKey)
+    .lte("date", toKey);
+  if (error) throw error;
+
+  const map = new Map<string, EventItem[]>();
+  for (const e of (data ?? []) as EventItem[]) {
+    map.set(e.date, [...(map.get(e.date) ?? []), e]);
+  }
+  for (const [k, v] of map) map.set(k, sortEvents(v));
+  return map;
+}
+
+export async function loadDayEvents(key: string) {
+  const { data, error } = await supabase.from("events").select(EVENT_COLS).eq("date", key);
+  if (error) throw error;
+  return sortEvents((data ?? []) as EventItem[]);
+}
+
+// 화면에서 고친 목록을 통째로 받아 원본과 견주어 반영한다. 저장을 누를
+// 때까지 아무것도 바뀌지 않아야 하므로 diff 방식을 쓴다.
+export type EventDraft = {
+  id: string | null; // null 이면 새로 추가된 것
+  at: string | null;
+  title: string;
+  done: boolean;
+};
+
+export async function applyEvents(
+  key: string,
+  author: PersonId,
+  original: EventItem[],
+  next: EventDraft[]
+) {
+  const kept = new Set(next.map((e) => e.id).filter(Boolean) as string[]);
+  const removed = original.filter((e) => !kept.has(e.id)).map((e) => e.id);
+  if (removed.length > 0) {
+    const { error } = await supabase.from("events").delete().in("id", removed);
+    if (error) throw error;
+  }
+
+  for (const draft of next) {
+    const title = draft.title.trim();
+    if (!title) continue;
+
+    if (draft.id) {
+      const before = original.find((e) => e.id === draft.id);
+      if (before && before.title === title && before.at === draft.at && before.done === draft.done) {
+        continue;
+      }
+      const { error } = await supabase
+        .from("events")
+        .update({ title, at: draft.at, done: draft.done })
+        .eq("id", draft.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from("events")
+        .insert({ date: key, title, at: draft.at, done: draft.done, author });
+      if (error) throw error;
+    }
+  }
+}
+
+// 오늘부터 앞으로의 일정. 캘린더 아래에 무엇이 남았는지 보여준다.
+export async function loadUpcoming(fromKey: string, limit = 5) {
+  const { data, error } = await supabase
+    .from("events")
+    .select(EVENT_COLS)
+    .gte("date", fromKey)
+    .eq("done", false)
+    .order("date", { ascending: true })
+    .order("at", { ascending: true, nullsFirst: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as EventItem[];
 }

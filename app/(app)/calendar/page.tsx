@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, addMonths, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import DateSheet from "@/components/DateSheet";
-import { dateKey, loadMonth } from "@/lib/records";
+import {
+  dateKey,
+  loadEvents,
+  loadMonth,
+  loadUpcoming,
+  type EventItem,
+} from "@/lib/records";
 import { photoUrl } from "@/lib/supabase";
 import { readMe, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
@@ -23,6 +29,8 @@ export default function CalendarPage() {
 
   // date 문자열 → { id, cover }. 화면에 보이는 42칸 전체를 담는다.
   const [covers, setCovers] = useState<Map<string, { cover: string | null }>>(new Map());
+  const [dayEvents, setDayEvents] = useState<Map<string, EventItem[]>>(new Map());
+  const [upcoming, setUpcoming] = useState<EventItem[]>([]);
 
   // 레이아웃 가드가 이미 통과시킨 뒤라 값이 있다.
   useEffect(() => setMe(readMe()), []);
@@ -45,13 +53,17 @@ export default function CalendarPage() {
   // 이번 달이 아니라 화면에 보이는 42칸 범위를 통째로 읽는다. 앞뒤 달 칸에도
   // 기록이 있으면 썸네일이 보여야 한다.
   const refresh = useCallback(async () => {
-    try {
-      const map = await loadMonth(dateKey(days[0]), dateKey(days[41]));
-      setCovers(map);
-    } catch {
-      // 썸네일은 부가 정보다. 실패해도 캘린더 자체는 계속 쓸 수 있어야 한다.
-      setCovers(new Map());
-    }
+    const from = dateKey(days[0]);
+    const to = dateKey(days[41]);
+    const [month, events, next] = await Promise.all([
+      loadMonth(from, to).catch(() => new Map()),
+      loadEvents(from, to).catch(() => new Map()),
+      loadUpcoming(dateKey(new Date())).catch(() => []),
+    ]);
+    // 부가 정보다. 하나가 실패해도 캘린더 자체는 계속 쓸 수 있어야 한다.
+    setCovers(month);
+    setDayEvents(events);
+    setUpcoming(next);
   }, [days]);
 
   useEffect(() => {
@@ -96,8 +108,10 @@ export default function CalendarPage() {
           const inMonth = isSameMonth(day, cursor);
           const isToday = isSameDay(day, today);
           const isSelected = selected && isSameDay(day, selected);
-          const entry = covers.get(dateKey(day));
+          const dKey = dateKey(day);
+          const entry = covers.get(dKey);
           const cover = entry?.cover ?? null;
+          const evs = dayEvents.get(dKey) ?? [];
           const key = dateKey(day).slice(5);
           const isBirthday = showBirthdays && birthdays.some((date) => date.slice(5) === key);
           const anniversaryDays = relationshipDate ? Math.floor((day.getTime() - new Date(`${relationshipDate}T00:00:00`).getTime()) / 86400000) : -1;
@@ -130,9 +144,26 @@ export default function CalendarPage() {
                 </>
               )}
 
-              {/* 사진은 없고 메모만 있는 날 */}
-              {!cover && entry && (
-                <span className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#ff8fab]" />
+              {/* 표시는 위쪽에 모은다. 아래쪽은 생일·기념일 라벨 자리다.
+                  분홍 점은 일기, 파란 점은 일정. 끝낸 일정은 흐리게. */}
+              {(entry || evs.length > 0) && (
+                <span className="absolute inset-x-0 top-1 flex justify-center gap-0.5">
+                  {entry && (
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        cover ? "bg-white" : "bg-[#ff8fab]"
+                      }`}
+                    />
+                  )}
+                  {evs.slice(0, 3).map((e) => (
+                    <span
+                      key={e.id}
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        e.done ? "bg-[#e6cdd6]" : cover ? "bg-white/70" : "bg-[#8fa8d8]"
+                      }`}
+                    />
+                  ))}
+                </span>
               )}
 
               <span
@@ -149,6 +180,30 @@ export default function CalendarPage() {
         })}
       </div>
 
+      {upcoming.length > 0 && (
+        <section className="mt-6">
+          <h2 className="mb-2 px-1 text-xs font-medium text-[#bda5ae]">다가오는 일정</h2>
+          <ul className="space-y-1.5">
+            {upcoming.map((e) => (
+              <li key={e.id}>
+                <button
+                  onClick={() => setSelected(new Date(`${e.date}T00:00:00`))}
+                  className="flex w-full items-center gap-2.5 rounded-2xl border border-[#f5d0da] bg-white px-3.5 py-2.5 text-left transition active:scale-[0.99]"
+                >
+                  <span className="w-[68px] shrink-0 text-xs font-medium text-[#c9788f]">
+                    {formatWhen(e.date)}
+                  </span>
+                  <span className="w-[38px] shrink-0 text-xs text-[#bda5ae]">
+                    {e.at ? e.at.slice(0, 5) : "종일"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{e.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {selected && me && (
         <DateSheet
           dateKey={dateKey(selected)}
@@ -160,4 +215,16 @@ export default function CalendarPage() {
       )}
     </main>
   );
+}
+
+// 오늘·내일은 이름으로, 나머지는 날짜로. 며칠 남았는지 세는 수고를 덜어준다.
+function formatWhen(key: string) {
+  const d = new Date(`${key}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return "오늘";
+  if (diff === 1) return "내일";
+  if (diff < 7) return `${diff}일 뒤`;
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }

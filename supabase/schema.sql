@@ -78,6 +78,20 @@ where d.body is not null
   and btrim(d.body) <> ''
   and not exists (select 1 from public.date_notes n where n.date_id = d.id);
 
+-- 함께 보는 일정. 지나간 기록(dates)과 달리 앞날에도 붙으므로 dates 에
+-- 매달지 않고 날짜를 직접 갖는다. 일정만 있는 날에 빈 dates 행을 만들지 않기 위해서다.
+create table if not exists public.events (
+  id         uuid primary key default gen_random_uuid(),
+  date       date not null,
+  at         time,                    -- 없으면 하루 종일
+  title      text not null,
+  author     text check (author in ('yeachan', 'daeun')),
+  done       boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists events_date_idx on public.events (date, at);
+
 -- 캘린더는 "그 달 범위의 날짜 + 각 날짜의 첫 사진"을 한 번에 읽는다.
 create index if not exists dates_date_idx on public.dates (date);
 create index if not exists date_photos_date_id_sort_idx on public.date_photos (date_id, sort);
@@ -129,6 +143,7 @@ create table if not exists public.app_settings (
 alter table public.dates       enable row level security;
 alter table public.date_photos enable row level security;
 alter table public.date_notes  enable row level security;
+alter table public.events      enable row level security;
 alter table public.pokes       enable row level security;
 alter table public.profiles    enable row level security;
 alter table public.app_settings enable row level security;
@@ -136,6 +151,7 @@ alter table public.app_settings enable row level security;
 drop policy if exists "dates anon all"       on public.dates;
 drop policy if exists "date_photos anon all" on public.date_photos;
 drop policy if exists "date_notes anon all"  on public.date_notes;
+drop policy if exists "events anon all"      on public.events;
 drop policy if exists "pokes anon all"       on public.pokes;
 drop policy if exists "profiles anon all"    on public.profiles;
 drop policy if exists "app_settings anon all" on public.app_settings;
@@ -152,6 +168,11 @@ create policy "date_photos anon all"
 
 create policy "date_notes anon all"
   on public.date_notes for all
+  to anon, authenticated
+  using (true) with check (true);
+
+create policy "events anon all"
+  on public.events for all
   to anon, authenticated
   using (true) with check (true);
 

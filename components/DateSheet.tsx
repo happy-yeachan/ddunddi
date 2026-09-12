@@ -5,13 +5,17 @@ import { photoUrl } from "@/lib/supabase";
 import { PEOPLE, nameOf, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
 import {
+  applyEvents,
   deleteNote,
   deletePhoto,
   ensureDate,
   loadDate,
   resizeImage,
+  loadDayEvents,
   upsertNote,
   uploadPhoto,
+  type EventDraft,
+  type EventItem,
   type Note,
   type Photo,
 } from "@/lib/records";
@@ -33,6 +37,8 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const [loading, setLoading] = useState(true);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [eventDraft, setEventDraft] = useState<EventDraft[]>([]);
 
   // 저장을 누르기 전까지는 화면에서만 바뀐다. 버튼 하나가 모든 변경을 책임진다.
   const [draft, setDraft] = useState("");
@@ -52,16 +58,18 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    loadDate(dateKey)
-      .then(({ photos, notes }) => {
+    Promise.all([loadDate(dateKey), loadDayEvents(dateKey)])
+      .then(([{ photos, notes }, evs]) => {
         if (!alive) return;
         setPhotos(photos);
         setNotes(notes);
+        setEvents(evs);
+        setEventDraft(toDraft(evs));
         const mine = notes.find((n) => n.author === me)?.body ?? "";
         setDraft(mine);
         setSaved(mine);
         // 아무것도 없는 날은 보여줄 것이 없으니 바로 쓰는 화면으로 연다.
-        if (photos.length === 0 && notes.length === 0) setMode("edit");
+        if (photos.length === 0 && notes.length === 0 && evs.length === 0) setMode("edit");
       })
       .catch((e) => alive && setError(e.message ?? "불러오지 못했어요"))
       .finally(() => alive && setLoading(false));
@@ -92,9 +100,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   }, [picked]);
 
   const partnerNote = notes.find((n) => n.author === partner);
+  const eventsChanged = useMemo(
+    () => JSON.stringify(eventDraft) !== JSON.stringify(toDraft(events)),
+    [eventDraft, events]
+  );
   const dirty = useMemo(
-    () => draft !== saved || picked.length > 0 || doomed.length > 0,
-    [draft, saved, picked.length, doomed.length]
+    () => draft !== saved || picked.length > 0 || doomed.length > 0 || eventsChanged,
+    [draft, saved, picked.length, doomed.length, eventsChanged]
   );
 
   async function save() {
@@ -128,6 +140,8 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         }
       }
 
+      await applyEvents(dateKey, me, events, eventDraft);
+
       const text = draft.trim();
       const mine = notes.find((n) => n.author === me);
       if (text) {
@@ -137,9 +151,14 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         await deleteNote(mine.id);
       }
 
-      const fresh = await loadDate(dateKey);
+      const [fresh, freshEvents] = await Promise.all([
+        loadDate(dateKey),
+        loadDayEvents(dateKey),
+      ]);
       setPhotos(fresh.photos);
       setNotes(fresh.notes);
+      setEvents(freshEvents);
+      setEventDraft(toDraft(freshEvents));
       setSaved(text);
       setDraft(text);
       setPicked([]);
@@ -163,6 +182,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   function cancelEdit() {
     if (dirty && !confirm("고친 내용을 버릴까요?")) return;
     setDraft(saved);
+    setEventDraft(toDraft(events));
     setPicked([]);
     setDoomed([]);
     setError("");
@@ -195,6 +215,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             <p className="py-10 text-center text-sm text-[#bda5ae]">불러오는 중…</p>
           ) : mode === "view" ? (
             <ViewBody
+              events={events}
               photos={photos}
               notes={notes}
               me={me}
@@ -205,6 +226,71 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             />
           ) : (
             <>
+              <section className="mb-5">
+                <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일정</h3>
+                <div className="space-y-2">
+                  {eventDraft.map((e, i) => (
+                    <div key={e.id ?? `new-${i}`} className="flex items-center gap-2">
+                      <button
+                        onClick={() =>
+                          setEventDraft((prev) =>
+                            prev.map((x, j) => (j === i ? { ...x, done: !x.done } : x))
+                          )
+                        }
+                        aria-label={e.done ? "완료 취소" : "완료"}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] transition active:scale-90 ${
+                          e.done
+                            ? "border-[#ff8fab] bg-[#ff8fab] text-white"
+                            : "border-[#f0cdd8] bg-white text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </button>
+                      <input
+                        type="time"
+                        value={e.at ? e.at.slice(0, 5) : ""}
+                        onChange={(ev) =>
+                          setEventDraft((prev) =>
+                            prev.map((x, j) =>
+                              j === i
+                                ? { ...x, at: ev.target.value ? `${ev.target.value}:00` : null }
+                                : x
+                            )
+                          )
+                        }
+                        className="w-[86px] shrink-0 rounded-xl border border-[#f5d0da] bg-white px-2 py-2 text-sm outline-none focus:border-[#ff8fab]"
+                      />
+                      <input
+                        value={e.title}
+                        onChange={(ev) =>
+                          setEventDraft((prev) =>
+                            prev.map((x, j) => (j === i ? { ...x, title: ev.target.value } : x))
+                          )
+                        }
+                        placeholder="무엇을 할까"
+                        className="min-w-0 flex-1 rounded-xl border border-[#f5d0da] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
+                      />
+                      <button
+                        onClick={() => setEventDraft((prev) => prev.filter((_, j) => j !== i))}
+                        aria-label="일정 빼기"
+                        className="shrink-0 px-1 text-lg text-[#d8b6c0] transition active:scale-90"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() =>
+                    setEventDraft((prev) => [...prev, { id: null, at: null, title: "", done: false }])
+                  }
+                  className="mt-2 w-full rounded-xl border border-dashed border-[#f0cdd8] py-2.5 text-sm text-[#c9788f] transition active:scale-[0.99]"
+                >
+                  + 일정 추가
+                </button>
+              </section>
+
+              <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">사진</h3>
               <div className="grid grid-cols-3 gap-2">
                 {photos.map((p) => {
                   const marked = doomed.includes(p.id);
@@ -390,6 +476,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 }
 
 function ViewBody({
+  events,
   photos,
   notes,
   me,
@@ -398,6 +485,7 @@ function ViewBody({
   onZoom,
   onEdit,
 }: {
+  events: EventItem[];
   photos: Photo[];
   notes: Note[];
   me: PersonId;
@@ -411,6 +499,29 @@ function ViewBody({
 
   return (
     <div className="pb-2">
+      {events.length > 0 && (
+        <section className="mb-5">
+          <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일정</h3>
+          <ul className="space-y-1.5">
+            {events.map((e) => (
+              <li
+                key={e.id}
+                className={`flex items-center gap-2.5 rounded-2xl border border-[#f5d0da] bg-white px-3.5 py-2.5 ${
+                  e.done ? "opacity-45" : ""
+                }`}
+              >
+                <span className="w-[42px] shrink-0 text-xs font-medium text-[#c9788f]">
+                  {e.at ? e.at.slice(0, 5) : "종일"}
+                </span>
+                <span className={`min-w-0 flex-1 text-sm ${e.done ? "line-through" : ""}`}>
+                  {e.title}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {photos.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {photos.map((p) => (
@@ -467,6 +578,10 @@ function Diary({
       )}
     </section>
   );
+}
+
+function toDraft(list: EventItem[]): EventDraft[] {
+  return list.map((e) => ({ id: e.id, at: e.at, title: e.title, done: e.done }));
 }
 
 // 저장 버튼이 무엇을 반영할지 미리 보여준다. 조용히 실패하거나
