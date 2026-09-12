@@ -7,6 +7,9 @@ export async function loadRelationshipDate() {
 }
 
 export async function saveRelationshipDate(date: string, anniversaries = true, birthdays = true) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
+    throw new Error("사귄 날짜를 YYYY-MM-DD 형식의 실제 날짜로 입력해주세요.");
+  }
   const { error } = await supabase.from("app_settings").upsert({ id: 1, relationship_date: date || null, show_anniversaries: anniversaries, show_birthdays: birthdays });
-  if (error) throw error;
+  if (error) throw new Error(`설정을 저장하지 못했어요: ${error.message}`);
 }

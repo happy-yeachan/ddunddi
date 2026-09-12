@@ -34,7 +34,7 @@ export default function UsPage() {
     Promise.all([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, date]) => {
       setDashboardProfiles([self, partner].filter(Boolean) as Profile[]);
       setRelationshipDate(date?.date ?? ""); setShowAnniversaries(date?.anniversaries ?? true); setShowBirthdays(date?.birthdays ?? true);
-    }).catch(() => {});
+    }).catch(() => setMessage("설정을 불러오지 못했어요. 잠시 후 다시 시도해주세요."));
   }, [me]);
   useEffect(() => {
     if (!me) return;
@@ -84,7 +84,7 @@ export default function UsPage() {
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     try { await saveRelationshipDate(relationshipDate, showAnniversaries, showBirthdays); router.push("/us"); }
-    catch { setMessage("설정을 저장하지 못했어요"); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했어요"); }
   }
 
   return <main className="mx-auto max-w-md px-6 pt-[calc(2rem+env(safe-area-inset-top))] pb-8">

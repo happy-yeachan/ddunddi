@@ -16,6 +16,7 @@ export default function UsPage() {
   const [error, setError] = useState("");
   const [view, setView] = useState<(Profile | null)[] | null>(null);
   const [opening, setOpening] = useState(false);
+  const [givenName, setGivenName] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -24,9 +25,10 @@ export default function UsPage() {
     if (!id) return;
     const other = id === "yeachan" ? "daeun" : "yeachan";
     // 설정 조회 실패가 저장된 두 사람의 프로필까지 숨기지 않도록 각각 반영한다.
-    Promise.allSettled([loadProfile(id, id), loadProfile(id, other), loadRelationshipDate()]).then((results) => {
+    Promise.allSettled([loadProfile(id, id), loadProfile(id, other), loadRelationshipDate(), loadProfile(other, id)]).then((results) => {
       if (!alive) return;
-      const [self, partner, dates] = results;
+      const [self, partner, dates, namedByPartner] = results;
+      if (namedByPartner.status === "fulfilled") setGivenName(namedByPartner.value?.name.trim() || "");
       setProfiles([self.status === "fulfilled" ? self.value : null, partner.status === "fulfilled" ? partner.value : null]);
       if (dates.status === "fulfilled") setSettings(dates.value);
       if (results.some((r) => r.status === "rejected")) setError("일부 정보를 불러오지 못했어요. 잠시 후 다시 방문해주세요.");
@@ -36,7 +38,7 @@ export default function UsPage() {
   }, []);
 
   const other: PersonId = me === "yeachan" ? "daeun" : "yeachan";
-  const selfName = profiles[0]?.name.trim() || nameOf(me);
+  const selfName = givenName || nameOf(me);
   const partnerName = profiles[1]?.name.trim() || nameOf(other);
   const today = startOfDay(new Date());
   const start = settings?.date ? parseISO(settings.date) : null;
@@ -54,7 +56,7 @@ export default function UsPage() {
     const birthday = parseISO(p.birth_date);
     let date = addYears(birthday, today.getFullYear() - birthday.getFullYear());
     if (differenceInCalendarDays(date, today) < 0) date = addYears(birthday, today.getFullYear() + 1 - birthday.getFullYear());
-    upcoming.push({ label: `🎂 ${p.name} 생일`, date });
+    upcoming.push({ label: `🎂 ${p.subject === me ? selfName : partnerName} 생일`, date });
   });
   upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
 

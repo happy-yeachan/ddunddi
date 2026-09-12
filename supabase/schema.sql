@@ -146,6 +146,9 @@ alter table public.date_notes  enable row level security;
 alter table public.events      enable row level security;
 alter table public.pokes       enable row level security;
 alter table public.profiles    enable row level security;
+-- 기존 테이블에도 새 설정 필드를 적용한다.
+alter table public.app_settings add column if not exists show_anniversaries boolean not null default true;
+alter table public.app_settings add column if not exists show_birthdays boolean not null default true;
 alter table public.app_settings enable row level security;
 
 drop policy if exists "dates anon all"       on public.dates;
