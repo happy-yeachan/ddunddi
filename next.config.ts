@@ -3,8 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-      // Supabase Storage 의 public URL. 프로젝트 ref 를 몰라도 되도록 와일드카드로 두었다.
-      { protocol: "https", hostname: "**.supabase.co", pathname: "/storage/v1/object/public/**" },
+      // Supabase Storage 의 public URL. 프로젝트가 바뀌면 여기 호스트도 같이 바꿔야 한다.
+      {
+        protocol: "https",
+        hostname: "xvcqywysqpltzwpipgfx.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
     ],
   },
 };
