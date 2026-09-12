@@ -85,10 +85,19 @@ create table if not exists public.events (
   date       date not null,
   at         time,                    -- 없으면 하루 종일
   title      text not null,
-  author     text check (author in ('yeachan', 'daeun')),
+  author     text check (author in ('yeachan', 'daeun')),   -- 넣은 사람
+  owner      text not null default 'both'                   -- 누구 일정인지
+             check (owner in ('yeachan', 'daeun', 'both')),
   done       boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+-- 이미 만들어진 테이블에는 컬럼을 따로 붙인다. 기존 일정은 주인을 알 수
+-- 없으므로 둘 다의 일정으로 둔다.
+alter table public.events add column if not exists owner text not null default 'both';
+alter table public.events drop constraint if exists events_owner_check;
+alter table public.events add constraint events_owner_check
+  check (owner in ('yeachan', 'daeun', 'both'));
 
 create index if not exists events_date_idx on public.events (date, at);
 

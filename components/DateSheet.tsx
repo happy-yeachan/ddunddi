@@ -235,7 +235,11 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일정</h3>
                 <div className="space-y-2">
                   {eventDraft.map((e, i) => (
-                    <div key={e.id ?? `new-${i}`} className="flex items-center gap-2">
+                    <div
+                      key={e.id ?? `new-${i}`}
+                      className="rounded-2xl border border-[#f5d0da] bg-white/60 p-2"
+                    >
+                      <div className="flex items-center gap-2">
                       <button
                         onClick={() =>
                           setEventDraft((prev) =>
@@ -282,12 +286,54 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                       >
                         ×
                       </button>
+                      </div>
+
+                      <div className="mt-1.5 flex gap-1 pl-8">
+                        {(
+                          [
+                            [me, "내 일정"],
+                            [partner, `${partnerLabel} 일정`],
+                            ["both", "같이"],
+                          ] as const
+                        ).map(([value, text]) => (
+                          <button
+                            key={value}
+                            onClick={() =>
+                              setEventDraft((prev) =>
+                                prev.map((x, j) => (j === i ? { ...x, owner: value } : x))
+                              )
+                            }
+                            className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition active:scale-95 ${
+                              e.owner === value
+                                ? "border-transparent text-white"
+                                : "border-[#f0cdd8] bg-white text-[#bda5ae]"
+                            }`}
+                            style={
+                              e.owner === value
+                                ? { backgroundColor: OWNER_COLOR[value] }
+                                : undefined
+                            }
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  e.owner === value ? "#fff" : OWNER_COLOR[value],
+                              }}
+                            />
+                            {text}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
                 <button
                   onClick={() =>
-                    setEventDraft((prev) => [...prev, { id: null, at: null, title: "", done: false }])
+                    setEventDraft((prev) => [
+                      ...prev,
+                      { id: null, at: null, title: "", owner: "both", done: false },
+                    ])
                   }
                   className="mt-2 w-full rounded-xl border border-dashed border-[#f0cdd8] py-2.5 text-sm text-[#c9788f] transition active:scale-[0.99]"
                 >
@@ -535,11 +581,19 @@ function ViewBody({
                   e.done ? "opacity-45" : ""
                 }`}
               >
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: OWNER_COLOR[e.owner] }}
+                  title={ownerText(e.owner, me, partnerLabel)}
+                />
                 <span className="w-[42px] shrink-0 text-xs font-medium text-[#c9788f]">
                   {e.at ? e.at.slice(0, 5) : "종일"}
                 </span>
                 <span className={`min-w-0 flex-1 text-sm ${e.done ? "line-through" : ""}`}>
                   {e.title}
+                </span>
+                <span className="shrink-0 text-[11px] text-[#bda5ae]">
+                  {ownerText(e.owner, me, partnerLabel)}
                 </span>
               </li>
             ))}
@@ -615,8 +669,26 @@ function todayKey() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// 일정 색. 캘린더 범례와 같은 값을 쓴다.
+export const OWNER_COLOR: Record<string, string> = {
+  yeachan: "#6f97d8",
+  daeun: "#e0a458",
+  both: "#7fc8a9",
+};
+
+export function ownerText(owner: string, me: PersonId, partnerLabel: string) {
+  if (owner === "both") return "같이";
+  return owner === me ? "나" : partnerLabel;
+}
+
 function toDraft(list: EventItem[]): EventDraft[] {
-  return list.map((e) => ({ id: e.id, at: e.at, title: e.title, done: e.done }));
+  return list.map((e) => ({
+    id: e.id,
+    at: e.at,
+    title: e.title,
+    owner: e.owner,
+    done: e.done,
+  }));
 }
 
 // 저장 버튼이 무엇을 반영할지 미리 보여준다. 조용히 실패하거나

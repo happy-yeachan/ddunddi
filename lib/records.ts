@@ -13,12 +13,16 @@ export type DateRecord = {
 export type Photo = { id: string; path: string; sort: number };
 
 // 함께 보는 일정. at 이 없으면 하루 종일.
+// owner 는 "누구 일정인지", author 는 "누가 넣었는지"로 서로 다르다.
+export type EventOwner = PersonId | "both";
+
 export type EventItem = {
   id: string;
   date: string;
   at: string | null;
   title: string;
   author: PersonId | null;
+  owner: EventOwner;
   done: boolean;
 };
 
@@ -219,7 +223,7 @@ export async function deletePhoto(photo: Photo) {
   if (rmErr) console.warn("스토리지 파일 삭제 실패:", photo.path, rmErr.message);
 }
 
-const EVENT_COLS = "id, date, at, title, author, done";
+const EVENT_COLS = "id, date, at, title, author, owner, done";
 
 function sortEvents(list: EventItem[]) {
   // 시각이 있는 것이 먼저, 그 안에서 이른 순. 하루 종일은 뒤로 보낸다.
@@ -259,6 +263,7 @@ export type EventDraft = {
   id: string | null; // null 이면 새로 추가된 것
   at: string | null;
   title: string;
+  owner: EventOwner;
   done: boolean;
 };
 
@@ -281,18 +286,24 @@ export async function applyEvents(
 
     if (draft.id) {
       const before = original.find((e) => e.id === draft.id);
-      if (before && before.title === title && before.at === draft.at && before.done === draft.done) {
+      if (
+        before &&
+        before.title === title &&
+        before.at === draft.at &&
+        before.owner === draft.owner &&
+        before.done === draft.done
+      ) {
         continue;
       }
       const { error } = await supabase
         .from("events")
-        .update({ title, at: draft.at, done: draft.done })
+        .update({ title, at: draft.at, owner: draft.owner, done: draft.done })
         .eq("id", draft.id);
       if (error) throw error;
     } else {
       const { error } = await supabase
         .from("events")
-        .insert({ date: key, title, at: draft.at, done: draft.done, author });
+        .insert({ date: key, title, at: draft.at, owner: draft.owner, done: draft.done, author });
       if (error) throw error;
     }
   }

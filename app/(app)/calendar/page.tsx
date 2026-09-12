@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { addDays, addMonths, differenceInCalendarDays, endOfMonth, parseISO, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
-import DateSheet from "@/components/DateSheet";
+import DateSheet, { OWNER_COLOR } from "@/components/DateSheet";
 import {
   dateKey,
   loadEvents,
@@ -186,23 +186,18 @@ export default function CalendarPage() {
                 </>
               )}
 
-              {/* 표시는 위쪽에 모은다. 아래쪽은 생일·기념일 라벨 자리다.
-                  분홍 점은 일기, 파란 점은 일정. 끝낸 일정은 흐리게. */}
-              {(entry || evs.length > 0) && (
+              {/* 점은 일정만 쓴다. 색은 아래 범례와 같다.
+                  일기는 숫자 밑줄로 구분해 점과 섞이지 않게 했다. */}
+              {evs.length > 0 && (
                 <span className="absolute inset-x-0 top-1 flex justify-center gap-0.5">
-                  {entry && (
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        cover ? "bg-white" : "bg-[#ff8fab]"
-                      }`}
-                    />
-                  )}
                   {evs.slice(0, 3).map((e) => (
                     <span
                       key={e.id}
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        e.done ? "bg-[#e6cdd6]" : cover ? "bg-white/70" : "bg-[#8fa8d8]"
-                      }`}
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{
+                        backgroundColor: OWNER_COLOR[e.owner],
+                        opacity: e.done ? 0.35 : 1,
+                      }}
                     />
                   ))}
                 </span>
@@ -211,10 +206,18 @@ export default function CalendarPage() {
               <span
                 className={[
                   "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+                  "relative",
                   isSelected ? "" : holidayNames.length || day.getDay() === 0 ? (cover ? "rounded bg-white/95 px-1 font-semibold text-red-600" : "font-semibold text-red-600") : cover ? "font-semibold text-white" : day.getDay() === 6 ? "text-[#6684b5]" : "",
                 ].join(" ")}
               >
                 {day.getDate()}
+                {entry && (
+                  <span
+                    className={`absolute -bottom-1 left-1/2 h-[2px] w-3 -translate-x-1/2 rounded-full ${
+                      cover ? "bg-white" : "bg-[#ff8fab]"
+                    }`}
+                  />
+                )}
               </span>
               {eventLabel && <span title={eventLabel} className="absolute inset-x-0 bottom-0 rounded bg-white/95 px-0.5 text-[9px] leading-tight text-[#a84367]">{eventLabel}</span>}
             </button>
@@ -223,6 +226,13 @@ export default function CalendarPage() {
       </div>
 
       {Object.keys(holidays).some((date) => date.startsWith(dateKey(cursor).slice(0, 7))) && <ul className="mt-4 space-y-1 text-xs text-red-600" aria-label="이번 달 공휴일">{Object.entries(holidays).filter(([date]) => date.startsWith(dateKey(cursor).slice(0, 7))).sort(([a], [b]) => a.localeCompare(b)).map(([date, names]) => <li key={date}>{Number(date.slice(8))}일 · {names.join(" · ")}</li>)}</ul>}
+
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-[#bda5ae]">
+        <Legend color="#ff8fab" shape="bar" text="일기" />
+        <Legend color={OWNER_COLOR.both} text="같이" />
+        <Legend color={OWNER_COLOR[me ?? "yeachan"]} text="내 일정" />
+        <Legend color={OWNER_COLOR[me === "yeachan" ? "daeun" : "yeachan"]} text="상대 일정" />
+      </div>
 
       {summary && (
         <section className="mt-6 rounded-2xl border border-[#f5d0da] bg-white px-4 py-4">
@@ -266,6 +276,26 @@ export default function CalendarPage() {
         />
       )}
     </main>
+  );
+}
+
+function Legend({
+  color,
+  text,
+  shape = "dot",
+}: {
+  color: string;
+  text: string;
+  shape?: "dot" | "bar";
+}) {
+  return (
+    <span className="flex items-center gap-1">
+      <span
+        className={shape === "bar" ? "h-[2px] w-3 rounded-full" : "h-1.5 w-1.5 rounded-full"}
+        style={{ backgroundColor: color }}
+      />
+      {text}
+    </span>
   );
 }
 
