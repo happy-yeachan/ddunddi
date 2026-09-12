@@ -118,5 +118,9 @@ create policy "date-photos insert"
   to anon, authenticated
   with check (bucket_id = 'date-photos');
 
--- 사진 삭제는 v0 범위 밖이라 delete 정책은 넣지 않았다.
--- 나중에 삭제 기능을 붙일 때 같은 모양으로 하나 더 추가하면 된다.
+drop policy if exists "date-photos delete" on storage.objects;
+
+create policy "date-photos delete"
+  on storage.objects for delete
+  to anon, authenticated
+  using (bucket_id = 'date-photos');

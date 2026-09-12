@@ -158,3 +158,14 @@ export async function uploadPhoto(key: string, dateId: string, blob: Blob, sort:
 
   return path;
 }
+
+// 행을 먼저 지우고 파일을 지운다. 순서가 반대면 파일만 사라지고 행이 남아
+// 화면에 깨진 이미지가 뜬다. 파일 삭제가 실패해도 화면에서는 이미 사라진
+// 뒤이므로, 남는 파일은 스토리지 쓰레기로만 남고 사용자를 막지 않는다.
+export async function deletePhoto(photo: Photo) {
+  const { error } = await supabase.from("date_photos").delete().eq("id", photo.id);
+  if (error) throw error;
+
+  const { error: rmErr } = await supabase.storage.from(PHOTO_BUCKET).remove([photo.path]);
+  if (rmErr) console.warn("스토리지 파일 삭제 실패:", photo.path, rmErr.message);
+}

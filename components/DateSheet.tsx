@@ -5,6 +5,7 @@ import { photoUrl } from "@/lib/supabase";
 import { nameOf, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
 import {
+  deletePhoto,
   loadDate,
   resizeImage,
   saveMemo,
@@ -34,6 +35,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const [picked, setPicked] = useState<File[]>([]);
   const [progress, setProgress] = useState<Progress>(null);
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -67,6 +69,23 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     }).catch(() => {});
     return () => { alive = false; };
   }, [author, me]);
+
+  async function remove(photo: Photo) {
+    if (removing) return;
+    if (!confirm("이 사진을 지울까요? 되돌릴 수 없어요")) return;
+
+    setRemoving(photo.id);
+    setError("");
+    try {
+      await deletePhoto(photo);
+      setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "사진을 지우지 못했어요");
+    } finally {
+      setRemoving(null);
+    }
+  }
 
   async function save() {
     if (saving) return;
@@ -136,25 +155,40 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             <>
               <div className="grid grid-cols-3 gap-2">
                 {photos.map((p) => (
-                  // next/image 대신 img 를 쓴다. 업로드 전에 이미 1600px 로
-                  // 줄여 올리므로 추가 최적화 이득이 작고, Vercel 이미지
-                  // 최적화 할당량을 쓰지 않는다.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={p.id}
-                    src={photoUrl(p.path)}
-                    alt=""
-                    loading="lazy"
-                    className="aspect-square w-full rounded-xl object-cover"
-                  />
+                  <div key={p.id} className="relative">
+                    {/* next/image 대신 img 를 쓴다. 업로드 전에 이미 1600px 로
+                        줄여 올리므로 추가 최적화 이득이 작고, Vercel 이미지
+                        최적화 할당량을 쓰지 않는다. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photoUrl(p.path)}
+                      alt=""
+                      loading="lazy"
+                      className="aspect-square w-full rounded-xl object-cover"
+                    />
+                    <button
+                      onClick={() => remove(p)}
+                      disabled={removing !== null}
+                      aria-label="사진 지우기"
+                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-sm text-white transition active:scale-90 disabled:opacity-40"
+                    >
+                      {removing === p.id ? "…" : "×"}
+                    </button>
+                  </div>
                 ))}
 
                 {picked.map((f, i) => (
-                  <div
-                    key={`${f.name}-${i}`}
-                    className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-[#f0cdd8] text-[10px] text-[#bda5ae]"
-                  >
-                    올릴 사진
+                  <div key={`${f.name}-${i}`} className="relative">
+                    <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-[#f0cdd8] text-[10px] text-[#bda5ae]">
+                      올릴 사진
+                    </div>
+                    <button
+                      onClick={() => setPicked((prev) => prev.filter((_, j) => j !== i))}
+                      aria-label="선택 취소"
+                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-sm text-white transition active:scale-90"
+                    >
+                      ×
+                    </button>
                   </div>
                 ))}
 
