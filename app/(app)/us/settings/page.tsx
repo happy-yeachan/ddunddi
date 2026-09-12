@@ -20,17 +20,8 @@ export default function UsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [dashboardProfiles, setDashboardProfiles] = useState<Profile[]>([]);
-  const [editing, setEditing] = useState(true);
 
   useEffect(() => setMe(readMe()), []);
-  useEffect(() => {
-    if (!me) return;
-    const other = PEOPLE.find((p) => p.id !== me)!.id;
-    Promise.all([loadProfile(me, me), loadProfile(me, other)]).then(([self, partner]) => {
-      setDashboardProfiles([self, partner].filter(Boolean) as Profile[]);
-    }).catch(() => setMessage("설정을 불러오지 못했어요. 잠시 후 다시 시도해주세요."));
-  }, [me]);
   useEffect(() => {
     if (!me) return;
     const other = PEOPLE.find((p) => p.id !== me)?.id ?? me;
@@ -50,20 +41,12 @@ export default function UsPage() {
     if (!me || !subject) return;
     setSaving(true); setMessage("");
     if (!complete(form)) {
-      window.alert(`${subject === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(subject)}`} 소개서에 사진, 이름, 생년월일을 모두 입력해주세요.`);
+      window.alert("상대 소개서에 사진, 이름, 생년월일을 모두 입력해주세요.");
       setSaving(false);
       return;
     }
     try {
       await saveProfile({ ...form, author: me, subject });
-      const other = PEOPLE.find((p) => p.id !== me)!.id;
-      const next = subject === me ? other : me;
-      const nextProfile = await loadProfile(me, next);
-      if (!nextProfile || !complete(copyForm(nextProfile))) {
-        window.alert(`내가 쓰는 ${next === me ? "나" : nameOf(next)}를 작성해주세요`);
-        setSubject(next);
-        return;
-      }
       router.replace("/us");
       setMessage("소개서를 저장했어요");
     }
@@ -83,13 +66,8 @@ export default function UsPage() {
     <p className="mb-6 text-sm text-[#bda5ae]">두 사람의 소개를 관리해요</p>
     <Link href="/calendar/settings" className="mb-5 inline-block text-sm text-[#a45d73]">사귄 날짜 · 기념일은 캘린더 설정에서 →</Link>
     {message && <p role="status" className="mb-4 text-sm text-[#a45270]">{message}</p>}
-    <section className="mb-6 grid grid-cols-2 gap-3">{dashboardProfiles.map((p) => <button key={`${p.author}-${p.subject}`} onClick={() => { setSubject(p.subject); setEditing(true); }} className="rounded-2xl bg-white p-4 text-left shadow-sm"><div className="mb-3 h-20 w-20 overflow-hidden rounded-2xl bg-[#ffe0e8]">{p.photo_path && <img src={photoUrl(p.photo_path)} alt="" className="h-full w-full object-cover" />}</div><p className="font-semibold">{p.name || nameOf(p.subject)}</p><p className="mt-1 text-xs text-[#bda5ae]">{p.subject === me ? "내 소개" : "상대 소개"}</p></button>)}</section>
-    {dashboardProfiles.length === 2 && !editing ? <button onClick={() => setEditing(true)} className="mb-6 w-full rounded-2xl bg-[#ffe0e8] py-3 text-sm font-semibold text-[#e05c7e]">소개서와 설정 수정</button> : null}
-    {(editing || dashboardProfiles.length < 2) && <h2 className="mb-2 text-lg font-bold">소개서 수정</h2>}
-    <div className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-[#ffeef2] p-1">
-      {me && PEOPLE.map((p) => <button key={p.id} onClick={() => setSubject(p.id)} className={`rounded-xl py-3 text-sm font-semibold ${subject === p.id ? "bg-white text-[#ff7092] shadow-sm" : "text-[#c5a8b2]"}`}>{p.id === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(p.id)}`}</button>)}
-    </div>
-    {(editing || dashboardProfiles.length < 2) && (loading ? <div className="py-16 text-center text-sm text-[#c5a8b2]">불러오는 중…</div> : <form onSubmit={submit} className="space-y-4">
+    <h2 className="mb-5 text-lg font-semibold">내가 쓰는 상대</h2>
+    {loading ? <p className="py-10">불러오는 중…</p> : <form onSubmit={submit} className="space-y-4">
       <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
       <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
       <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", formatDateInput(e.target.value))} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
@@ -99,7 +77,7 @@ export default function UsPage() {
       <Field label="한줄 소개" value={form.intro} onChange={(v) => change("intro", v)} placeholder="한 문장으로 소개해주세요" />
       <button disabled={saving} className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white disabled:opacity-50">{saving ? "저장 중…" : "소개서 저장"}</button>
       {message && <p className="text-center text-sm text-[#e05c7e]">{message}</p>}
-    </form>)}
+    </form>}
   </main>;
 }
 

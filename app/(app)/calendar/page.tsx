@@ -43,7 +43,7 @@ export default function CalendarPage() {
     if (!me) return;
     const other = (me === "yeachan" ? "daeun" : "yeachan") as PersonId;
     let alive = true;
-    Promise.allSettled([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, settings]) => {
+    Promise.allSettled([loadProfile(other, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, settings]) => {
       if (!alive) return;
       setBirthdays([self.status === "fulfilled" ? self.value?.birth_date : null, partner.status === "fulfilled" ? partner.value?.birth_date : null].filter(Boolean) as string[]);
       if (settings.status === "fulfilled") {

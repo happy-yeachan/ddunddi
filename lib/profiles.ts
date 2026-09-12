@@ -26,6 +26,7 @@ export async function loadProfile(author: PersonId, subject: PersonId) {
 }
 
 export async function saveProfile(profile: Omit<Profile, "id"> & { id?: string }) {
+  if (profile.author === profile.subject) throw new Error("상대 소개서만 작성할 수 있어요.");
   const payload = { ...profile, birth_date: profile.birth_date || null };
   const { data, error } = await supabase
     .from("profiles")

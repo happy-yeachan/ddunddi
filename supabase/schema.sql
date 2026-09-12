@@ -127,7 +127,8 @@ create table if not exists public.profiles (
   dislikes     text not null default '',
   intro        text not null default '',
   created_at   timestamptz not null default now(),
-  unique (author, subject)
+  unique (author, subject),
+  constraint profiles_partner_only check (author <> subject)
 );
 
 create index if not exists profiles_author_subject_idx on public.profiles (author, subject);

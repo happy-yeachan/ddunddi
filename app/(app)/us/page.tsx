@@ -30,12 +30,12 @@ export default function UsPage() {
     // 설정 조회 실패가 저장된 두 사람의 프로필까지 숨기지 않도록 각각 반영한다.
     // 일정은 부가 정보라 실패해도 화면을 막지 않는다.
     loadUpcoming(dateKey(new Date()), 10).then((list) => { if (alive) setEvents(list); }).catch(() => {});
-    Promise.allSettled([loadProfile(id, id), loadProfile(id, other), loadRelationshipDate(), loadProfile(other, id)]).then((results) => {
+    Promise.allSettled([loadProfile(other, id), loadProfile(id, other), loadRelationshipDate()]).then((results) => {
       if (!alive) return;
-      const [self, partner, dates, namedByPartner] = results;
-      if (namedByPartner.status === "fulfilled") {
-        setGivenName(namedByPartner.value?.name.trim() || "");
-        setGivenProfile(namedByPartner.value);
+      const [self, partner, dates] = results;
+      if (self.status === "fulfilled") {
+        setGivenName(self.value?.name.trim() || "");
+        setGivenProfile(self.value);
       }
       setProfiles([self.status === "fulfilled" ? self.value : null, partner.status === "fulfilled" ? partner.value : null]);
       if (dates.status === "fulfilled") setSettings(dates.value);
@@ -75,7 +75,7 @@ export default function UsPage() {
   async function openPartner() {
     if (!me || opening) return;
     setOpening(true);
-    try { setView(await Promise.all([loadProfile(other, me), loadProfile(other, other)])); }
+    try { setView([await loadProfile(me, other)]); }
     catch { setError("상대의 소개서를 불러오지 못했어요. 다시 눌러주세요."); }
     finally { setOpening(false); }
   }
@@ -102,7 +102,7 @@ export default function UsPage() {
           <p className="mt-3 text-xs text-[#a87586]">{start ? `${format(start, "yyyy.MM.dd")}부터 함께` : "오늘도 서로의 하루에 머물러요"}</p>
         </div>
       </section>
-      {!error && (!profiles[0]?.photo_path || !profiles[1]?.photo_path) && <Link href="/us/settings" className="mt-4 flex items-center justify-between rounded-2xl border border-[#efdce3] bg-white p-4 text-sm text-[#9e4e6b]"><span>우리 소개 채우기</span><span>→</span></Link>}
+      {!error && (!profiles[1]?.photo_path) && <Link href="/us/settings" className="mt-4 flex items-center justify-between rounded-2xl border border-[#efdce3] bg-white p-4 text-sm text-[#9e4e6b]"><span>우리 소개 채우기</span><span>→</span></Link>}
       {!error && !settings?.date && <Link href="/calendar/settings" className="mt-4 block rounded-2xl bg-white p-4 text-sm text-[#9e4e6b]">사귄 날짜 채우기 →</Link>}
       <section className="mt-7"><h2 className="mb-3 text-base font-bold">곧 찾아올 특별한 날</h2>
         <div className="rounded-3xl bg-white p-5 shadow-sm">
@@ -113,7 +113,7 @@ export default function UsPage() {
       <p className="mt-8 text-center text-xs text-[#bd99a6]">평범한 하루도, 함께라서 특별해.</p>
     </>}
     {error && <p role="alert" className="mt-4 text-sm text-[#a45270]">{error}</p>}
-    {view && <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 p-5" role="dialog" aria-modal="true" aria-label="소개서 보기"><section className="mx-auto my-8 max-w-md rounded-3xl bg-[#fff7f9] p-5"><button onClick={() => setView(null)} className="mb-5 rounded-full bg-white px-4 py-2 text-sm">닫기</button>{view.map((profile, i) => <article key={i} className="mb-4 rounded-2xl bg-white p-5"><h2 className="mb-4 font-bold">{view.length === 1 ? "내 소개" : i === 0 ? `${partnerName}가 쓴 나` : `${partnerName}가 쓴 본인 소개`}</h2>{profile ? <>{profile.photo_path && <img src={photoUrl(profile.photo_path)} alt={`${profile.name} 소개 사진`} className="mb-4 aspect-square w-full rounded-2xl object-cover" />}<h3 className="text-xl font-semibold">{profile.name}</h3><p className="mt-1 text-sm text-[#ab8191]">{profile.birth_date}</p><dl className="mt-5 space-y-4">{([['성격', profile.personality], ['좋아하는 것', profile.likes], ['싫어하는 것', profile.dislikes], ['한줄 소개', profile.intro]]).map(([label, value]) => <div key={label}><dt className="text-xs text-[#b18595]">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{value || "아직 작성하지 않았어요"}</dd></div>)}</dl></> : <p className="text-sm text-[#ab8191]">아직 작성한 소개서가 없어요.</p>}</article>)}</section></div>}
+    {view && <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 p-5" role="dialog" aria-modal="true" aria-label="소개서 보기"><section className="mx-auto my-8 max-w-md rounded-3xl bg-[#fff7f9] p-5"><button onClick={() => setView(null)} className="mb-5 rounded-full bg-white px-4 py-2 text-sm">닫기</button>{view.map((profile, i) => <article key={i} className="mb-4 rounded-2xl bg-white p-5"><h2 className="mb-4 font-bold">{profile?.subject === me ? `${partnerName}가 쓴 나` : `내가 쓴 ${partnerName}`}</h2>{profile ? <>{profile.photo_path && <img src={photoUrl(profile.photo_path)} alt={`${profile.name} 소개 사진`} className="mb-4 aspect-square w-full rounded-2xl object-cover" />}<h3 className="text-xl font-semibold">{profile.name}</h3><p className="mt-1 text-sm text-[#ab8191]">{profile.birth_date}</p><dl className="mt-5 space-y-4">{([['성격', profile.personality], ['좋아하는 것', profile.likes], ['싫어하는 것', profile.dislikes], ['한줄 소개', profile.intro]]).map(([label, value]) => <div key={label}><dt className="text-xs text-[#b18595]">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{value || "아직 작성하지 않았어요"}</dd></div>)}</dl></> : <p className="text-sm text-[#ab8191]">아직 작성한 소개서가 없어요.</p>}</article>)}</section></div>}
   </main>;
 }
 
