@@ -27,15 +27,45 @@ create table if not exists public.date_photos (
   created_at timestamptz not null default now()
 );
 
--- 날짜별 메모. 한 날에 두 사람이 각각 여러 개 남길 수 있다.
+-- 날짜별 일기. 하루에 사람마다 한 편이고 고쳐 쓸 수 있다.
 -- dates.body 는 건드리지 않는다. 나중에 AI 일기 본문이 들어갈 자리다.
 create table if not exists public.date_notes (
   id         uuid primary key default gen_random_uuid(),
   date_id    uuid not null references public.dates(id) on delete cascade,
   author     text not null check (author in ('yeachan', 'daeun')),
   body       text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (date_id, author)
 );
+
+-- 예전에 말풍선처럼 여러 개 남기던 것을 하루 한 편으로 합친다.
+-- 가장 먼저 쓴 것에 나머지를 이어 붙이고 나머지 행은 지운다.
+update public.date_notes n
+set body = m.merged
+from (
+  select (array_agg(id order by created_at))[1] as keep_id,
+         string_agg(body, E'\n\n' order by created_at) as merged
+  from public.date_notes
+  group by date_id, author
+  having count(*) > 1
+) m
+where n.id = m.keep_id;
+
+delete from public.date_notes n
+using (
+  select date_id, author, (array_agg(id order by created_at))[1] as keep_id
+  from public.date_notes
+  group by date_id, author
+) m
+where n.date_id = m.date_id and n.author = m.author and n.id <> m.keep_id;
+
+-- 기존 테이블에는 unique 가 없으므로 따로 붙인다. 여러 번 실행해도 안전하다.
+alter table public.date_notes drop constraint if exists date_notes_date_id_author_key;
+alter table public.date_notes add constraint date_notes_date_id_author_key
+  unique (date_id, author);
+
+alter table public.date_notes add column if not exists updated_at timestamptz not null default now();
 
 create index if not exists date_notes_date_id_created_idx
   on public.date_notes (date_id, created_at);

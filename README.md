@@ -79,9 +79,16 @@ npm run db:push
 `SUPABASE_DB_URL`이 필요하며 Session pooler 문자열을 쓴다(Direct connection은 IPv6 전용이라 대개
 연결되지 않는다). 콘솔 SQL Editor에 직접 붙여넣어도 되지만, 설명 문장이 섞여 들어가기 쉽다.
 
-- `dates` — 하루 한 레코드. `date`가 unique라 upsert의 충돌 기준으로 쓴다
-- `date_photos` — `dates`에 종속. `on delete cascade`
-- Storage 버킷 `date-photos` — public read
+- `dates` — 하루 한 레코드. `date`가 unique라 upsert의 충돌 기준으로 쓴다.
+  `body`는 비워 둔다. 나중에 AI 일기 본문이 들어갈 자리다
+- `date_notes` — 날짜별 일기. `(date_id, author)`가 unique라 하루에 사람마다 한 편이다
+- `date_photos` — 날짜별 사진
+- `profiles` — 서로에 대해 쓰는 소개서. `(author, subject)`가 unique
+- `pokes` — 찌르기 기록
+- `app_settings` — 앱 설정
+- Storage 버킷 `date-photos` — public read. 사진과 소개서 사진이 함께 들어간다
+
+`date_notes`와 `date_photos`는 `dates`에 `on delete cascade`로 매달려 있다.
 
 RLS는 켜두고 anon에 전권 정책을 준다. 끄는 것과 접근 범위는 같지만, Supabase는 RLS 해제를
 권장하지 않아 대시보드에서 다시 켜질 여지가 있고, 정책으로 적어두면 의도가 코드에 남는다.
@@ -107,28 +114,51 @@ app/
   api/gate/route.ts     비밀번호 검증. 서버에서만 비교한다
   (app)/
     layout.tsx          게이트 검사 + 하단 탭바 (3탭이 공유)
-    calendar/page.tsx   월 캘린더
-    us/page.tsx         준비 중
-    poke/page.tsx       준비 중
+    calendar/page.tsx   월 캘린더 · 셀 썸네일
+    us/page.tsx         서로의 소개서
+    poke/page.tsx       찌르기
+components/
+  DateSheet.tsx         날짜 상세 시트. 사진과 일기를 한 번에 편집한다
 lib/
   supabase.ts           anon 클라이언트, photoUrl()
+  records.ts            날짜 · 사진 · 일기 읽기와 쓰기, 이미지 리사이즈
   me.ts                 localStorage 키와 사람 목록
+  profiles.ts           소개서
+  pokes.ts              찌르기
+  settings.ts           앱 설정
   splash-devices.json   iOS 스플래시 기기 목록
-scripts/make-icons.mjs
+scripts/
+  make-icons.mjs        아이콘 · 스플래시 생성
+  db-push.mjs           schema.sql 적용
 supabase/schema.sql
 ```
 
+### 날짜 상세 시트
+
+사진과 일기를 한 화면에서 편집한다. **모든 변경은 저장을 눌러야 반영된다.**
+사진 삭제도 표시만 해두고 저장 시점에 실제로 지워진다. 버튼 문구가 무엇이
+반영될지 미리 알려준다 — `저장 · 사진 2장 · 삭제 1장 · 일기`.
+
+일기는 **하루에 사람마다 한 편**이고 고쳐 쓸 수 있다. 내 일기는 편집할 수 있고
+상대 일기는 읽기만 한다. 내 일기를 비우고 저장하면 지운다는 뜻이다.
+
 ## v0 진행 상황
 
-| | 단계 | 상태 |
-|---|---|---|
-| 1 | 배포 + 커스텀 도메인 | 완료 |
-| 2 | PWA 셸 (아이콘·스플래시·standalone) | 완료 |
-| 3 | Supabase 스키마 | 완료 |
-| 4 | 비밀번호 게이트 + 이름 선택 | 완료 |
-| 5 | 월 캘린더 그리드 | 완료 |
-| 6 | 날짜 상세 시트 — 사진 업로드, 메모 저장 | 진행 중 |
-| 7 | 캘린더 셀 썸네일 | 예정 |
+8단계 모두 완료.
+
+| | 단계 |
+|---|---|
+| 1 | 배포 + 커스텀 도메인 |
+| 2 | PWA 셸 (아이콘·스플래시·standalone) |
+| 3 | Supabase 스키마 |
+| 4 | 비밀번호 게이트 + 이름 선택 |
+| 5 | 월 캘린더 그리드 |
+| 6 | 날짜 상세 — 사진 업로드, 일기 |
+| 7 | 캘린더 셀 썸네일 |
+| 8 | README |
+
+v0 이후에 붙은 것: 사진 삭제, 서로의 소개서, 찌르기, 저장 전 미리보기,
+`npm run db:push`.
 
 ## 다음에 붙이면 좋을 것
 
@@ -142,9 +172,8 @@ v0 범위 밖이라 의도적으로 미뤘다. 스키마와 구조는 열어두�
 - `date_photos.sort` — 사진 순서 바꾸기
 
 **기능**
-- 사진 삭제 — Storage에 delete 정책을 넣지 않아 앱에서 지울 수 없다.
-  콘솔에서만 가능하다. `schema.sql`의 insert 정책과 같은 모양으로 하나 더 추가하면 된다
 - 업로드 실패 시 재시도
+- 사진 순서 바꾸기 (`date_photos.sort` 컬럼은 이미 있다)
 - AI 일기 — 사진과 메모로 그날 글을 생성
 - 콕 찌르기 — 푸시 알림
 - 소개 페이지, 카카오톡 연동

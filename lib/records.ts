@@ -12,11 +12,13 @@ export type DateRecord = {
 
 export type Photo = { id: string; path: string; sort: number };
 
+// 하루에 사람마다 한 편. 고쳐 쓸 수 있다.
 export type Note = {
   id: string;
   author: PersonId;
   body: string;
   created_at: string;
+  updated_at: string;
 };
 
 // Date → 'yyyy-MM-dd'. toISOString() 은 UTC 로 바꾸면서 한국 시간 자정 근처의
@@ -42,7 +44,7 @@ export async function loadDate(key: string) {
       .order("sort", { ascending: true }),
     supabase
       .from("date_notes")
-      .select("id, author, body, created_at")
+      .select("id, author, body, created_at, updated_at")
       .eq("date_id", record.id)
       .order("created_at", { ascending: true }),
   ]);
@@ -86,11 +88,15 @@ export async function ensureDate(key: string) {
   return data.id as string;
 }
 
-export async function addNote(dateId: string, author: PersonId, body: string) {
+// 같은 날 같은 사람은 한 행뿐이라 덮어쓴다. 일기를 고쳐 쓰는 동작이다.
+export async function upsertNote(dateId: string, author: PersonId, body: string) {
   const { data, error } = await supabase
     .from("date_notes")
-    .insert({ date_id: dateId, author, body })
-    .select("id, author, body, created_at")
+    .upsert(
+      { date_id: dateId, author, body, updated_at: new Date().toISOString() },
+      { onConflict: "date_id,author" }
+    )
+    .select("id, author, body, created_at, updated_at")
     .single();
   if (error) throw error;
   return data as Note;
