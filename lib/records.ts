@@ -311,3 +311,55 @@ export async function loadUpcoming(fromKey: string, limit = 5) {
   if (error) throw error;
   return (data ?? []) as EventItem[];
 }
+
+export type MonthSummary = {
+  days: number;        // 기록이 있는 날
+  photos: number;
+  notes: number;
+  bothDays: number;    // 둘 다 일기를 쓴 날
+  events: number;
+  eventsDone: number;
+};
+
+// 보고 있는 달의 요약. 캘린더 격자는 앞뒤 달 칸을 포함하므로
+// 여기서는 그 달의 1일부터 말일까지만 센다.
+export async function loadMonthSummary(
+  fromKey: string,
+  toKey: string
+): Promise<MonthSummary> {
+  const [rowsRes, eventsRes] = await Promise.all([
+    supabase
+      .from("dates")
+      .select("id, date, date_photos(id), date_notes(author)")
+      .gte("date", fromKey)
+      .lte("date", toKey),
+    supabase.from("events").select("id, done").gte("date", fromKey).lte("date", toKey),
+  ]);
+  if (rowsRes.error) throw rowsRes.error;
+  if (eventsRes.error) throw eventsRes.error;
+
+  let photos = 0;
+  let notes = 0;
+  let bothDays = 0;
+  let days = 0;
+
+  for (const r of rowsRes.data ?? []) {
+    const ps = (r.date_photos ?? []) as unknown[];
+    const ns = (r.date_notes ?? []) as { author: string }[];
+    if (ps.length === 0 && ns.length === 0) continue; // 일정만 있어 생긴 빈 행은 세지 않는다
+    days++;
+    photos += ps.length;
+    notes += ns.length;
+    if (new Set(ns.map((n) => n.author)).size >= 2) bothDays++;
+  }
+
+  const events = eventsRes.data ?? [];
+  return {
+    days,
+    photos,
+    notes,
+    bothDays,
+    events: events.length,
+    eventsDone: events.filter((e) => e.done).length,
+  };
+}

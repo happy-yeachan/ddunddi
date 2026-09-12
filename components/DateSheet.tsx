@@ -108,9 +108,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   );
   const dirty = useMemo(
     () =>
-      (!isFuture && draft !== saved) ||
-      picked.length > 0 ||
-      doomed.length > 0 ||
+      (!isFuture && (draft !== saved || picked.length > 0 || doomed.length > 0)) ||
       eventsChanged,
     [isFuture, draft, saved, picked.length, doomed.length, eventsChanged]
   );
@@ -124,12 +122,12 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
       const dateId = await ensureDate(dateKey);
 
       // 지우기부터. 올리기 전에 치워야 사진 순서가 꼬이지 않는다.
-      for (const id of doomed) {
+      for (const id of isFuture ? [] : doomed) {
         const photo = photos.find((p) => p.id === id);
         if (photo) await deletePhoto(photo);
       }
 
-      if (picked.length > 0) {
+      if (!isFuture && picked.length > 0) {
         setProgress({ done: 0, total: picked.length });
         // 한 장씩 올린다. 동시에 올리면 진행 표시가 의미를 잃고
         // 모바일 회선에서 오히려 느려진다.
@@ -297,8 +295,10 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 </button>
               </section>
 
-              <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">사진</h3>
-              <div className="grid grid-cols-3 gap-2">
+              <h3 className={`mb-1.5 text-xs font-medium text-[#bda5ae] ${isFuture ? "hidden" : ""}`}>
+                사진
+              </h3>
+              <div className={`grid grid-cols-3 gap-2 ${isFuture ? "hidden" : ""}`}>
                 {photos.map((p) => {
                   const marked = doomed.includes(p.id);
                   return (
@@ -389,11 +389,10 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
               {isFuture ? (
                 <section className="mt-5">
-                  <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일기</h3>
-                  <p className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm text-[#d8b6c0]">
+                  <p className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm leading-6 text-[#d8b6c0]">
                     아직 오지 않은 날이에요.
                     <br />
-                    일기는 그날이 되면 쓸 수 있어요
+                    사진과 일기는 그날이 되면 남길 수 있어요
                   </p>
                 </section>
               ) : (
@@ -474,7 +473,11 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
               >
                 {saving
                   ? "저장 중…"
-                  : summarize(picked.length, doomed.length, !isFuture && draft !== saved)}
+                  : summarize(
+                      isFuture ? 0 : picked.length,
+                      isFuture ? 0 : doomed.length,
+                      !isFuture && draft !== saved
+                    )}
               </button>
             </div>
           )}
@@ -544,7 +547,7 @@ function ViewBody({
         </section>
       )}
 
-      {photos.length > 0 && (
+      {!isFuture && photos.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {photos.map((p) => (
             <button

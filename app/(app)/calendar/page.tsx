@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { addDays, addMonths, differenceInCalendarDays, parseISO, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
+import { addDays, addMonths, differenceInCalendarDays, endOfMonth, parseISO, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import DateSheet from "@/components/DateSheet";
 import {
   dateKey,
   loadEvents,
   loadMonth,
-  loadUpcoming,
+  loadMonthSummary,
   type EventItem,
+  type MonthSummary,
 } from "@/lib/records";
 import { photoUrl } from "@/lib/supabase";
 import { readMe, type PersonId } from "@/lib/me";
@@ -31,7 +32,7 @@ export default function CalendarPage() {
   // date 문자열 → { id, cover }. 화면에 보이는 42칸 전체를 담는다.
   const [covers, setCovers] = useState<Map<string, { cover: string | null }>>(new Map());
   const [dayEvents, setDayEvents] = useState<Map<string, EventItem[]>>(new Map());
-  const [upcoming, setUpcoming] = useState<EventItem[]>([]);
+  const [summary, setSummary] = useState<MonthSummary | null>(null);
 
   // 레이아웃 가드가 이미 통과시킨 뒤라 값이 있다.
   useEffect(() => setMe(readMe()), []);
@@ -64,16 +65,20 @@ export default function CalendarPage() {
   const refresh = useCallback(async () => {
     const from = dateKey(days[0]);
     const to = dateKey(days[41]);
-    const [month, events, next] = await Promise.all([
+    // 격자는 앞뒤 달 칸을 포함하지만 요약은 그 달만 센다.
+    const monthFrom = dateKey(startOfMonth(cursor));
+    const monthTo = dateKey(endOfMonth(cursor));
+
+    const [month, events, stats] = await Promise.all([
       loadMonth(from, to).catch(() => new Map()),
       loadEvents(from, to).catch(() => new Map()),
-      loadUpcoming(dateKey(new Date())).catch(() => []),
+      loadMonthSummary(monthFrom, monthTo).catch(() => null),
     ]);
     // 부가 정보다. 하나가 실패해도 캘린더 자체는 계속 쓸 수 있어야 한다.
     setCovers(month);
     setDayEvents(events);
-    setUpcoming(next);
-  }, [days]);
+    setSummary(stats);
+  }, [days, cursor]);
 
   useEffect(() => {
     refresh();
@@ -196,27 +201,35 @@ export default function CalendarPage() {
         })}
       </div>
 
-      {upcoming.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 px-1 text-xs font-medium text-[#bda5ae]">다가오는 일정</h2>
-          <ul className="space-y-1.5">
-            {upcoming.map((e) => (
-              <li key={e.id}>
-                <button
-                  onClick={() => setSelected(new Date(`${e.date}T00:00:00`))}
-                  className="flex w-full items-center gap-2.5 rounded-2xl border border-[#f5d0da] bg-white px-3.5 py-2.5 text-left transition active:scale-[0.99]"
-                >
-                  <span className="w-[68px] shrink-0 text-xs font-medium text-[#c9788f]">
-                    {formatWhen(e.date)}
-                  </span>
-                  <span className="w-[38px] shrink-0 text-xs text-[#bda5ae]">
-                    {e.at ? e.at.slice(0, 5) : "종일"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm">{e.title}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+      {summary && (
+        <section className="mt-6 rounded-2xl border border-[#f5d0da] bg-white px-4 py-4">
+          <h2 className="mb-3 text-xs font-medium text-[#bda5ae]">
+            {cursor.getMonth() + 1}월 돌아보기
+          </h2>
+
+          {summary.days === 0 && summary.events === 0 ? (
+            <p className="py-2 text-center text-sm text-[#d8b6c0]">
+              이 달은 아직 비어 있어요
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <Stat n={summary.days} unit="일" label="기록한 날" />
+                <Stat n={summary.photos} unit="장" label="사진" />
+                <Stat n={summary.events} unit="개" label="일정" />
+              </div>
+
+              <p className="mt-3 border-t border-[#f7edf1] pt-3 text-xs leading-5 text-[#b28c99]">
+                {summary.bothDays > 0
+                  ? `둘 다 일기를 쓴 날이 ${summary.bothDays}일 있어요.`
+                  : summary.notes > 0
+                    ? "아직 둘 다 쓴 날은 없어요."
+                    : "일기는 아직 비어 있어요."}
+                {summary.events > 0 &&
+                  ` 일정은 ${summary.events}개 중 ${summary.eventsDone}개 마쳤어요.`}
+              </p>
+            </>
+          )}
         </section>
       )}
 
@@ -233,14 +246,14 @@ export default function CalendarPage() {
   );
 }
 
-// 오늘·내일은 이름으로, 나머지는 날짜로. 며칠 남았는지 세는 수고를 덜어준다.
-function formatWhen(key: string) {
-  const d = new Date(`${key}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
-  if (diff === 0) return "오늘";
-  if (diff === 1) return "내일";
-  if (diff < 7) return `${diff}일 뒤`;
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+function Stat({ n, unit, label }: { n: number; unit: string; label: string }) {
+  return (
+    <div>
+      <p className="text-xl font-bold text-[#ff8fab]">
+        {n}
+        <span className="ml-0.5 text-xs font-medium">{unit}</span>
+      </p>
+      <p className="mt-0.5 text-[11px] text-[#bda5ae]">{label}</p>
+    </div>
+  );
 }
