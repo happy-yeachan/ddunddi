@@ -43,6 +43,8 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   const [unpreviewable, setUnpreviewable] = useState<number[]>([]);
 
   const [partnerLabel, setPartnerLabel] = useState(nameOf(partner));
+  const [mode, setMode] = useState<"view" | "edit">("view");
+  const [zoom, setZoom] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +60,8 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         const mine = notes.find((n) => n.author === me)?.body ?? "";
         setDraft(mine);
         setSaved(mine);
+        // 아무것도 없는 날은 보여줄 것이 없으니 바로 쓰는 화면으로 연다.
+        if (photos.length === 0 && notes.length === 0) setMode("edit");
       })
       .catch((e) => alive && setError(e.message ?? "불러오지 못했어요"))
       .finally(() => alive && setLoading(false));
@@ -141,6 +145,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
       setPicked([]);
       setDoomed([]);
       setProgress(null);
+      setMode("view");
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "저장에 실패했어요");
@@ -151,8 +156,17 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
   }
 
   function close() {
-    if (dirty && !confirm("저장하지 않은 변경이 있어요. 닫을까요?")) return;
+    if (mode === "edit" && dirty && !confirm("저장하지 않은 변경이 있어요. 닫을까요?")) return;
     onClose();
+  }
+
+  function cancelEdit() {
+    if (dirty && !confirm("고친 내용을 버릴까요?")) return;
+    setDraft(saved);
+    setPicked([]);
+    setDoomed([]);
+    setError("");
+    setMode("view");
   }
 
   return (
@@ -164,13 +178,31 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
           <div className="h-1 w-10 rounded-full bg-[#eccfd8]" />
         </div>
 
-        <header className="px-5 pb-3">
+        <header className="flex items-center justify-between px-5 pb-3">
           <h2 className="text-lg font-bold">{label}</h2>
+          {!loading && mode === "view" && (
+            <button
+              onClick={() => setMode("edit")}
+              className="rounded-full border border-[#f5d0da] bg-white px-4 py-1.5 text-sm font-medium text-[#c9788f] transition active:scale-95"
+            >
+              편집
+            </button>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto px-5">
           {loading ? (
             <p className="py-10 text-center text-sm text-[#bda5ae]">불러오는 중…</p>
+          ) : mode === "view" ? (
+            <ViewBody
+              photos={photos}
+              notes={notes}
+              me={me}
+              partner={partner}
+              partnerLabel={partnerLabel}
+              onZoom={setZoom}
+              onEdit={() => setMode("edit")}
+            />
           ) : (
             <>
               <div className="grid grid-cols-3 gap-2">
@@ -237,7 +269,12 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 ))}
 
                 <button
-                  onClick={() => fileInput.current?.click()}
+                  onClick={() => {
+                    // 창을 열기 직전에 비운다. onChange 안에서 비우면 iOS 가
+                    // 여러 장을 채우는 도중에 끊겨 한 장만 들어온다.
+                    if (fileInput.current) fileInput.current.value = "";
+                    fileInput.current?.click();
+                  }}
                   aria-label="사진 추가"
                   className="flex aspect-square w-full items-center justify-center rounded-xl border border-[#f0cdd8] bg-white text-2xl text-[#d8b6c0] transition active:scale-95"
                 >
@@ -252,10 +289,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 multiple
                 className="hidden"
                 onChange={(e) => {
-                  // files 를 먼저 꺼내둔다. setPicked 에 넘기는 함수는 나중에
-                  // 실행되는데, 그 전에 value 를 비우면 files 도 같이 비워진다.
                   const files = Array.from(e.target.files ?? []);
-                  e.target.value = "";
                   setPicked((prev) => [...prev, ...files]);
                 }}
               />
@@ -313,16 +347,125 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
             </div>
           )}
 
-          <button
-            onClick={save}
-            disabled={saving || loading || !dirty}
-            className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
-          >
-            {saving ? "저장 중…" : summarize(picked.length, doomed.length, draft !== saved)}
-          </button>
+          {mode === "view" ? (
+            <button
+              onClick={close}
+              className="w-full rounded-2xl border border-[#f5d0da] bg-white py-4 text-lg font-semibold text-[#c9788f] transition active:scale-[0.98]"
+            >
+              닫기
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={cancelEdit}
+                disabled={saving}
+                className="rounded-2xl border border-[#f5d0da] bg-white px-6 py-4 text-lg font-medium text-[#c9788f] transition active:scale-[0.98] disabled:opacity-40"
+              >
+                취소
+              </button>
+              <button
+                onClick={save}
+                disabled={saving || !dirty}
+                className="flex-1 rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
+              >
+                {saving ? "저장 중…" : summarize(picked.length, doomed.length, draft !== saved)}
+              </button>
+            </div>
+          )}
         </div>
       </section>
+
+      {zoom && (
+        <button
+          onClick={() => setZoom(null)}
+          aria-label="닫기"
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/90 p-4"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoUrl(zoom)} alt="" className="max-h-full max-w-full object-contain" />
+        </button>
+      )}
     </div>
+  );
+}
+
+function ViewBody({
+  photos,
+  notes,
+  me,
+  partner,
+  partnerLabel,
+  onZoom,
+  onEdit,
+}: {
+  photos: Photo[];
+  notes: Note[];
+  me: PersonId;
+  partner: PersonId;
+  partnerLabel: string;
+  onZoom: (path: string) => void;
+  onEdit: () => void;
+}) {
+  const mine = notes.find((n) => n.author === me);
+  const theirs = notes.find((n) => n.author === partner);
+
+  return (
+    <div className="pb-2">
+      {photos.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => onZoom(p.path)}
+              className="transition active:scale-95"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoUrl(p.path)}
+                alt=""
+                loading="lazy"
+                className="aspect-square w-full rounded-xl object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Diary title="내 일기" body={mine?.body} onEdit={onEdit} />
+      <Diary title={`${partnerLabel}의 일기`} body={theirs?.body} />
+    </div>
+  );
+}
+
+function Diary({
+  title,
+  body,
+  onEdit,
+}: {
+  title: string;
+  body?: string;
+  onEdit?: () => void;
+}) {
+  return (
+    <section className="mt-5">
+      <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">{title}</h3>
+      {body ? (
+        <div className="whitespace-pre-wrap rounded-2xl border border-[#f5d0da] bg-white px-4 py-3.5 text-sm leading-relaxed">
+          {body}
+        </div>
+      ) : onEdit ? (
+        <button
+          onClick={onEdit}
+          className="w-full rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-sm text-[#d8b6c0] transition active:scale-[0.99]"
+        >
+          아직 안 썼어요. 지금 쓰기
+        </button>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm text-[#d8b6c0]">
+          아직 안 썼어요
+        </div>
+      )}
+    </section>
   );
 }
 
