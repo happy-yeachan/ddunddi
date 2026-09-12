@@ -28,6 +28,17 @@ if (!/pooler\.supabase\.com/.test(url)) {
   process.exit(1);
 }
 
+// 연결 문자열의 자리표시자를 지우지 않고 그대로 붙여넣는 일이 잦다.
+// 그대로 두면 "password authentication failed" 만 나와 원인을 알기 어렵다.
+if (/\[|YOUR-PASSWORD|<password>/i.test(url)) {
+  console.error(
+    "SUPABASE_DB_URL 의 비밀번호 자리가 아직 자리표시자입니다.\n" +
+      "[YOUR-PASSWORD] 를 대괄호까지 지우고 실제 DB 비밀번호로 바꾸세요.\n" +
+      "비밀번호를 모르면 Supabase → Database → Settings → Reset password 로 새로 정하면 됩니다."
+  );
+  process.exit(1);
+}
+
 const sql = await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8");
 
 const client = new pg.Client({
