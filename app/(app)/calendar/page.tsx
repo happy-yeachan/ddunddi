@@ -138,12 +138,12 @@ function CalendarContent() {
 
   return (
     <main className="mx-auto max-w-md px-4 pt-[calc(1rem+env(safe-area-inset-top))]">
-      <div className="flex justify-between"><button onClick={() => setCursor(startOfMonth(today))} className="rounded-full bg-white px-4 py-2 text-sm text-[#a45d73]">이번 달</button><Link href="/calendar/settings" aria-label="캘린더 설정" className="rounded-full bg-white px-4 py-2 text-sm text-[#a45d73]">⚙ 설정</Link></div>
+      <div className="flex justify-between"><button onClick={() => setCursor(startOfMonth(today))} className="rounded-full bg-white px-4 py-2 text-sm text-app-text">이번 달</button><Link href="/calendar/settings" aria-label="캘린더 설정" className="rounded-full bg-white px-4 py-2 text-sm text-app-text">⚙ 설정</Link></div>
       <header className="flex items-center justify-between py-3">
         <button
           onClick={() => setCursor((c) => addMonths(c, -1))}
           aria-label="이전 달"
-          className="h-11 w-11 rounded-full text-2xl text-[#c5a8b2] transition active:scale-90"
+          className="h-11 w-11 rounded-full text-2xl text-app-muted transition active:scale-90"
         >
           ‹
         </button>
@@ -151,20 +151,20 @@ function CalendarContent() {
           {cursor.getFullYear()}년 {cursor.getMonth() + 1}월
         </h1>
         <div className="flex items-center gap-1">
-          <button onClick={() => setCursor((c) => addMonths(c, 1))} aria-label="다음 달" className="h-11 w-8 text-2xl text-[#c5a8b2] transition active:scale-90">›</button>
+          <button onClick={() => setCursor((c) => addMonths(c, 1))} aria-label="다음 달" className="h-11 w-8 text-2xl text-app-muted transition active:scale-90">›</button>
         </div>
       </header>
       {settingsError && <p role="alert" className="mb-3 text-sm text-[#a45270]">{settingsError}</p>}
       {holidayError && <p role="status" className="mb-3 text-xs text-[#a45270]">{holidayError}</p>}
       {(dataError || settingsError || holidayError) && <div className="mb-3 text-sm text-[#a45270]">{dataError}<button onClick={() => setRevision((v) => v + 1)} className="ml-2 underline">다시 불러오기</button></div>}
-      <p role="status" className="mb-1 min-h-4 text-center text-xs text-[#bda5ae]">{dataLoading ? "기록을 불러오는 중…" : ""}</p>
+      <p role="status" className="mb-1 min-h-4 text-center text-xs text-app-muted">{dataLoading ? "기록을 불러오는 중…" : ""}</p>
 
       <div className="grid grid-cols-7">
         {WEEKDAYS.map((w, i) => (
           <div
             key={w}
             className={`pb-2 text-center text-xs font-medium ${
-              i === 0 ? "text-[#e8879b]" : i === 6 ? "text-[#8fa8d8]" : "text-[#bda5ae]"
+              i === 0 ? "text-[#e8879b]" : i === 6 ? "text-[#8fa8d8]" : "text-app-muted"
             }`}
           >
             {w}
@@ -196,8 +196,8 @@ function CalendarContent() {
               className={[
                 "relative aspect-square overflow-hidden rounded-xl text-sm transition active:scale-95",
                 inMonth ? "" : "opacity-25",
-                isSelected ? "bg-[#ff8fab] font-semibold text-white" : "bg-white/60",
-                isToday && !isSelected ? "ring-2 ring-[#ff8fab]" : "",
+                isSelected ? "bg-app-accent font-semibold text-app-on-accent" : "bg-white/60",
+                isToday && !isSelected ? "ring-2 ring-app-accent" : "",
               ].join(" ")}
             >
               {cover && (
@@ -245,11 +245,11 @@ function CalendarContent() {
               {entry && (
                 <span
                   className={`absolute left-1/2 top-[64%] h-[2px] w-3 -translate-x-1/2 rounded-full ${
-                    cover ? "bg-white" : "bg-[#ff8fab]"
+                    cover ? "bg-white" : "bg-app-accent"
                   }`}
                 />
               )}
-              {eventLabel && <span title={eventLabel} className="absolute inset-x-0 bottom-0 rounded bg-white/95 px-0.5 text-[9px] leading-tight text-[#a84367]">{eventLabel}</span>}
+              {eventLabel && <span title={eventLabel} className="absolute inset-x-0 bottom-0 rounded bg-white/95 px-0.5 text-[9px] leading-tight text-app-text">{eventLabel}</span>}
             </button>
           );
         })}
@@ -257,16 +257,16 @@ function CalendarContent() {
 
       {Object.keys(holidays).some((date) => date.startsWith(dateKey(cursor).slice(0, 7))) && <ul className="mt-4 space-y-1 text-xs text-red-600" aria-label="이번 달 공휴일">{Object.entries(holidays).filter(([date]) => date.startsWith(dateKey(cursor).slice(0, 7))).sort(([a], [b]) => a.localeCompare(b)).map(([date, names]) => <li key={date}>{Number(date.slice(8))}일 · {names.join(" · ")}</li>)}</ul>}
 
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-[#bda5ae]">
-        <Legend color="#ff8fab" shape="bar" text="일기" />
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-app-muted">
+        <Legend color="var(--app-accent)" shape="bar" text="일기" />
         <Legend color={OWNER_COLOR.both} text="같이" />
         <Legend color={OWNER_COLOR[me ?? "yeachan"]} text="내 일정" />
         <Legend color={OWNER_COLOR[me === "yeachan" ? "daeun" : "yeachan"]} text="상대 일정" />
       </div>
 
       {summary && (
-        <section className="mt-6 rounded-2xl border border-[#f5d0da] bg-white px-4 py-4">
-          <h2 className="mb-3 text-xs font-medium text-[#bda5ae]">
+        <section className="mt-6 rounded-2xl border border-app-border bg-white px-4 py-4">
+          <h2 className="mb-3 text-xs font-medium text-app-muted">
             {cursor.getMonth() + 1}월 돌아보기
           </h2>
 
@@ -282,7 +282,7 @@ function CalendarContent() {
                 <Stat n={summary.events} unit="개" label="일정" />
               </div>
 
-              <p className="mt-3 border-t border-[#f7edf1] pt-3 text-xs leading-5 text-[#b28c99]">
+              <p className="mt-3 border-t border-app-border pt-3 text-xs leading-5 text-app-muted">
                 {summary.bothDays > 0
                   ? `둘 다 일기를 쓴 날이 ${summary.bothDays}일 있어요.`
                   : summary.notes > 0
@@ -333,11 +333,11 @@ function Legend({
 function Stat({ n, unit, label }: { n: number; unit: string; label: string }) {
   return (
     <div>
-      <p className="text-xl font-bold text-[#ff8fab]">
+      <p className="text-xl font-bold text-app-accent">
         {n}
         <span className="ml-0.5 text-xs font-medium">{unit}</span>
       </p>
-      <p className="mt-0.5 text-[11px] text-[#bda5ae]">{label}</p>
+      <p className="mt-0.5 text-[11px] text-app-muted">{label}</p>
     </div>
   );
 }

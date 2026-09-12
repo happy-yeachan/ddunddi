@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { GATE_KEY, readMe } from "@/lib/me";
+import ThemeProvider from "@/components/ThemeProvider";
 
 const TABS = [
   { href: "/us", label: "우리" },
@@ -30,9 +31,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
+      <ThemeProvider />
       {children}
 
-      <nav className="fixed inset-x-0 bottom-0 border-t border-[#f5d0da] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 border-t border-app-border bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <div className="mx-auto grid max-w-md grid-cols-3">
           {TABS.map((t) => {
             const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
@@ -41,7 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 key={t.href}
                 href={t.href}
                 className={`py-4 text-center text-sm font-medium transition ${
-                  active ? "text-[#ff8fab]" : "text-[#c5a8b2]"
+                  active ? "text-app-accent" : "text-app-muted"
                 }`}
               >
                 {t.label}

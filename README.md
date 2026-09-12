@@ -118,7 +118,9 @@ app/
     layout.tsx          게이트 검사 + 하단 탭바 (3탭이 공유)
     calendar/page.tsx   월 캘린더 · 셀 썸네일
     us/page.tsx         커플 홈 · 가까운 특별한 날 3개
-    us/settings/page.tsx 상대 소개서 편집
+    us/settings/page.tsx 설정 목록
+    us/settings/profile/page.tsx 상대 소개서 편집
+    us/settings/customize/page.tsx 화면 꾸미기
     calendar/settings/page.tsx 사귄 날짜 · 생일/기념일 표시 설정
     poke/page.tsx       찌르기
 components/
@@ -138,6 +140,10 @@ supabase/schema.sql
 ```
 
 ### 캘린더
+
+설정 → 화면 꾸미기에서 추천 테마·대표 색상·글자 색상·배경·글자 크기·카드 모서리를
+미리 보고 저장한다. 설정은 이 브라우저의 localStorage에 사용자별로 저장하며 상대방과
+동기화하지 않는다. 기본값 복원도 저장해야 적용된다. 공휴일과 일정 소유자 구분 색은 유지한다.
 
 홈의 특별한 날과 오늘 기록을 누르면 `/calendar?date=YYYY-MM-DD`로 해당 날짜가 열린다.
 기념일은 사귄 날을 1일로 계산한다. 2월 29일 생일·주년은 평년에 2월 28일로 표시한다.

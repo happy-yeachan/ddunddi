@@ -1,9 +1,30 @@
 @import "tailwindcss";
 
+:root {
+  --app-accent: #ff8fab;
+  --app-text: #3d2b33;
+  --app-background: #fff7f9;
+  --app-on-accent: #241e24;
+  --app-radius: 1.5rem;
+}
+
+@theme inline {
+  --color-app-accent: var(--app-accent);
+  --color-app-text: var(--app-text);
+  --color-app-background: var(--app-background);
+  --color-app-on-accent: var(--app-on-accent);
+  --color-app-muted: color-mix(in srgb, var(--app-text) 75%, var(--app-background));
+  --color-app-border: color-mix(in srgb, var(--app-accent) 30%, white);
+  --color-app-soft: color-mix(in srgb, var(--app-accent) 14%, white);
+  --radius-app: var(--app-radius);
+}
+
 html,
 body {
-  background: #fff7f9;
-  color: #3d2b33;
+  background: var(--app-background);
+  color: var(--app-text);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
+
+dialog { color: var(--app-text); }

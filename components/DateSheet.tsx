@@ -221,9 +221,9 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
       <button aria-label="닫기" onClick={close} className="absolute inset-0 bg-black/30" />
 
-      <section className="relative mx-auto flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-3xl bg-[#fff7f9] pb-[env(safe-area-inset-bottom)]">
+      <section className="relative mx-auto flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-3xl bg-app-background pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-center pb-2 pt-3">
-          <div className="h-1 w-10 rounded-full bg-[#eccfd8]" />
+          <div className="h-1 w-10 rounded-full bg-app-border" />
         </div>
 
         <header className="flex items-center justify-between px-5 pb-3">
@@ -231,7 +231,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
           {!loading && !loadFailed && mode === "view" && (
             <button
               onClick={() => setMode("edit")}
-              className="rounded-full border border-[#f5d0da] bg-white px-4 py-1.5 text-sm font-medium text-[#c9788f] transition active:scale-95"
+              className="rounded-full border border-app-border bg-white px-4 py-1.5 text-sm font-medium text-app-muted transition active:scale-95"
             >
               편집
             </button>
@@ -240,7 +240,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
         <fieldset disabled={saving || loadFailed} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5">
           {loading ? (
-            <p className="py-10 text-center text-sm text-[#bda5ae]">불러오는 중…</p>
+            <p className="py-10 text-center text-sm text-app-muted">불러오는 중…</p>
           ) : mode === "view" ? (
             <ViewBody
               isFuture={isFuture}
@@ -256,12 +256,12 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
           ) : (
             <>
               <section className="mb-5">
-                <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일정</h3>
+                <h3 className="mb-1.5 text-xs font-medium text-app-muted">일정</h3>
                 <div className="space-y-2">
                   {eventDraft.map((e, i) => (
                     <div
                       key={e.id ?? `new-${i}`}
-                      className="rounded-2xl border border-[#f5d0da] bg-white/60 p-2"
+                      className="rounded-2xl border border-app-border bg-white/60 p-2"
                     >
                       <div className="flex items-center gap-2">
                       <button
@@ -273,8 +273,8 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                         aria-label={e.done ? "완료 취소" : "완료"}
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] transition active:scale-90 ${
                           e.done
-                            ? "border-[#ff8fab] bg-[#ff8fab] text-white"
-                            : "border-[#f0cdd8] bg-white text-transparent"
+                            ? "border-app-accent bg-app-accent text-app-on-accent"
+                            : "border-app-border bg-white text-transparent"
                         }`}
                       >
                         ✓
@@ -291,7 +291,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                             )
                           )
                         }
-                        className="w-[86px] shrink-0 rounded-xl border border-[#f5d0da] bg-white px-2 py-2 text-sm outline-none focus:border-[#ff8fab]"
+                        className="w-[86px] shrink-0 rounded-xl border border-app-border bg-white px-2 py-2 text-sm outline-none focus:border-app-accent"
                       />
                       <input
                         value={e.title}
@@ -301,7 +301,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                           )
                         }
                         placeholder="무엇을 할까"
-                        className="min-w-0 flex-1 rounded-xl border border-[#f5d0da] bg-white px-3 py-2 text-sm outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
+                        className="min-w-0 flex-1 rounded-xl border border-app-border bg-white px-3 py-2 text-sm outline-none placeholder:text-[#d8b6c0] focus:border-app-accent"
                       />
                       <button
                         onClick={() => setEventDraft((prev) => prev.filter((_, j) => j !== i))}
@@ -330,7 +330,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                             className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition active:scale-95 ${
                               e.owner === value
                                 ? "border-transparent text-white"
-                                : "border-[#f0cdd8] bg-white text-[#bda5ae]"
+                                : "border-app-border bg-white text-app-muted"
                             }`}
                             style={
                               e.owner === value
@@ -359,13 +359,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                       { id: crypto.randomUUID(), at: null, title: "", owner: "both", done: false },
                     ])
                   }
-                  className="mt-2 w-full rounded-xl border border-dashed border-[#f0cdd8] py-2.5 text-sm text-[#c9788f] transition active:scale-[0.99]"
+                  className="mt-2 w-full rounded-xl border border-dashed border-app-border py-2.5 text-sm text-app-muted transition active:scale-[0.99]"
                 >
                   + 일정 추가
                 </button>
               </section>
 
-              <h3 className={`mb-1.5 text-xs font-medium text-[#bda5ae] ${isFuture ? "hidden" : ""}`}>
+              <h3 className={`mb-1.5 text-xs font-medium text-app-muted ${isFuture ? "hidden" : ""}`}>
                 사진
               </h3>
               <div className={`grid grid-cols-3 gap-2 ${isFuture ? "hidden" : ""}`}>
@@ -411,13 +411,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                       <img
                         src={previews[i]}
                         alt=""
-                        className="aspect-square w-full rounded-xl border border-dashed border-[#f0cdd8] object-cover"
+                        className="aspect-square w-full rounded-xl border border-dashed border-app-border object-cover"
                         onError={() =>
                           setUnpreviewable((prev) => (prev.includes(i) ? prev : [...prev, i]))
                         }
                       />
                     ) : (
-                      <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-[#f0cdd8] text-[10px] text-[#bda5ae]">
+                      <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-dashed border-app-border text-[10px] text-app-muted">
                         올릴 사진
                       </div>
                     )}
@@ -439,7 +439,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                     fileInput.current?.click();
                   }}
                   aria-label="사진 추가"
-                  className="flex aspect-square w-full items-center justify-center rounded-xl border border-[#f0cdd8] bg-white text-2xl text-[#d8b6c0] transition active:scale-95"
+                  className="flex aspect-square w-full items-center justify-center rounded-xl border border-app-border bg-white text-2xl text-[#d8b6c0] transition active:scale-95"
                 >
                   +
                 </button>
@@ -459,7 +459,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
               {isFuture ? (
                 <section className="mt-5">
-                  <p className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm leading-6 text-[#d8b6c0]">
+                  <p className="rounded-2xl border border-dashed border-app-border px-4 py-6 text-center text-sm leading-6 text-[#d8b6c0]">
                     아직 오지 않은 날이에요.
                     <br />
                     사진과 일기는 그날이 되면 남길 수 있어요
@@ -467,27 +467,27 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
                 </section>
               ) : (
                 <section className="mt-5">
-                  <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">내 일기</h3>
+                  <h3 className="mb-1.5 text-xs font-medium text-app-muted">내 일기</h3>
                   <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     placeholder="오늘 어땠어?"
                     rows={5}
-                    className="w-full resize-none rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 leading-relaxed outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]"
+                    className="w-full resize-none rounded-2xl border border-app-border bg-white px-4 py-3 leading-relaxed outline-none placeholder:text-[#d8b6c0] focus:border-app-accent"
                   />
                 </section>
               )}
 
               <section className={`mt-4 mb-2 ${isFuture ? "hidden" : ""}`}>
-                <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">
+                <h3 className="mb-1.5 text-xs font-medium text-app-muted">
                   {partnerLabel}의 일기
                 </h3>
                 {partnerNote ? (
-                  <div className="whitespace-pre-wrap rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 text-sm leading-relaxed">
+                  <div className="whitespace-pre-wrap rounded-2xl border border-app-border bg-white px-4 py-3 text-sm leading-relaxed">
                     {partnerNote.body}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm text-[#d8b6c0]">
+                  <div className="rounded-2xl border border-dashed border-app-border px-4 py-6 text-center text-sm text-[#d8b6c0]">
                     아직 안 썼어요
                   </div>
                 )}
@@ -498,7 +498,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
         <div className="px-5 pb-4 pt-3">
           {error && (
-            <p className="mb-2 rounded-xl bg-[#ffe8ee] px-3 py-2 text-sm text-[#c94a6c]">
+            <p className="mb-2 rounded-xl bg-app-soft px-3 py-2 text-sm text-[#c94a6c]">
               {error}
             </p>
           )}
@@ -506,15 +506,15 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
 
           {progress && (
             <div className="mb-2">
-              <div className="mb-1 flex justify-between text-xs text-[#bda5ae]">
+              <div className="mb-1 flex justify-between text-xs text-app-muted">
                 <span>사진 올리는 중</span>
                 <span>
                   {progress.done} / {progress.total}
                 </span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-[#f5e2e8]">
+              <div className="h-1.5 overflow-hidden rounded-full bg-app-border">
                 <div
-                  className="h-full rounded-full bg-[#ff8fab] transition-[width]"
+                  className="h-full rounded-full bg-app-accent transition-[width]"
                   style={{ width: `${(progress.done / progress.total) * 100}%` }}
                 />
               </div>
@@ -524,7 +524,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
           {mode === "view" ? (
             <button
               onClick={close}
-              className="w-full rounded-2xl border border-[#f5d0da] bg-white py-4 text-lg font-semibold text-[#c9788f] transition active:scale-[0.98]"
+              className="w-full rounded-2xl border border-app-border bg-white py-4 text-lg font-semibold text-app-muted transition active:scale-[0.98]"
             >
               닫기
             </button>
@@ -533,14 +533,14 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
               <button
                 onClick={cancelEdit}
                 disabled={saving}
-                className="rounded-2xl border border-[#f5d0da] bg-white px-6 py-4 text-lg font-medium text-[#c9788f] transition active:scale-[0.98] disabled:opacity-40"
+                className="rounded-2xl border border-app-border bg-white px-6 py-4 text-lg font-medium text-app-muted transition active:scale-[0.98] disabled:opacity-40"
               >
                 취소
               </button>
               <button
                 onClick={save}
                 disabled={saving || loading || loadFailed || !dirty}
-                className="flex-1 rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white transition active:scale-[0.98] disabled:opacity-40"
+                className="flex-1 rounded-2xl bg-app-accent py-4 text-lg font-semibold text-app-on-accent transition active:scale-[0.98] disabled:opacity-40"
               >
                 {saving
                   ? "저장 중…"
@@ -597,12 +597,12 @@ function ViewBody({
     <div className="pb-2">
       {events.length > 0 && (
         <section className="mb-5">
-          <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">일정</h3>
+          <h3 className="mb-1.5 text-xs font-medium text-app-muted">일정</h3>
           <ul className="space-y-1.5">
             {events.map((e) => (
               <li
                 key={e.id}
-                className={`flex items-center gap-2.5 rounded-2xl border border-[#f5d0da] bg-white px-3.5 py-2.5 ${
+                className={`flex items-center gap-2.5 rounded-2xl border border-app-border bg-white px-3.5 py-2.5 ${
                   e.done ? "opacity-45" : ""
                 }`}
               >
@@ -611,13 +611,13 @@ function ViewBody({
                   style={{ backgroundColor: OWNER_COLOR[e.owner] }}
                   title={ownerText(e.owner, me, partnerLabel)}
                 />
-                <span className="w-[42px] shrink-0 text-xs font-medium text-[#c9788f]">
+                <span className="w-[42px] shrink-0 text-xs font-medium text-app-muted">
                   {e.at ? e.at.slice(0, 5) : "종일"}
                 </span>
                 <span className={`min-w-0 flex-1 text-sm ${e.done ? "line-through" : ""}`}>
                   {e.title}
                 </span>
-                <span className="shrink-0 text-[11px] text-[#bda5ae]">
+                <span className="shrink-0 text-[11px] text-app-muted">
                   {ownerText(e.owner, me, partnerLabel)}
                 </span>
               </li>
@@ -667,20 +667,20 @@ function Diary({
 }) {
   return (
     <section className="mt-5">
-      <h3 className="mb-1.5 text-xs font-medium text-[#bda5ae]">{title}</h3>
+      <h3 className="mb-1.5 text-xs font-medium text-app-muted">{title}</h3>
       {body ? (
-        <div className="whitespace-pre-wrap rounded-2xl border border-[#f5d0da] bg-white px-4 py-3.5 text-sm leading-relaxed">
+        <div className="whitespace-pre-wrap rounded-2xl border border-app-border bg-white px-4 py-3.5 text-sm leading-relaxed">
           {body}
         </div>
       ) : onEdit ? (
         <button
           onClick={onEdit}
-          className="w-full rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-sm text-[#d8b6c0] transition active:scale-[0.99]"
+          className="w-full rounded-2xl border border-dashed border-app-border px-4 py-6 text-sm text-[#d8b6c0] transition active:scale-[0.99]"
         >
           아직 안 썼어요. 지금 쓰기
         </button>
       ) : (
-        <div className="rounded-2xl border border-dashed border-[#f0cdd8] px-4 py-6 text-center text-sm text-[#d8b6c0]">
+        <div className="rounded-2xl border border-dashed border-app-border px-4 py-6 text-center text-sm text-[#d8b6c0]">
           아직 안 썼어요
         </div>
       )}

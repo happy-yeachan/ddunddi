@@ -19,6 +19,36 @@ function loadTs(file, stubs = {}) {
 }
 
 const dates = loadTs("lib/calendar-dates.ts");
+const theme = loadTs("lib/theme.ts");
+
+test("손상된 꾸미기 설정은 안전한 기본값으로 복구한다", () => {
+  assert.deepEqual(theme.normalizeTheme(null), theme.DEFAULT_THEME);
+  assert.deepEqual(theme.normalizeTheme({ accent: "url(bad)", text: "#fff", background: 12, size: 300, rounded: "false" }), theme.DEFAULT_THEME);
+});
+
+test("사용자별 꾸미기를 분리하고 저장 실패를 숨기지 않는다", () => {
+  const values = new Map();
+  const previousStorage = global.localStorage;
+  const previousWindow = global.window;
+  global.localStorage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  global.window = { dispatchEvent: () => {} };
+  try {
+    theme.saveTheme("yeachan", { ...theme.DEFAULT_THEME, accent: "#123456" });
+    assert.equal(theme.readTheme("yeachan").accent, "#123456");
+    assert.deepEqual(theme.readTheme("daeun"), theme.DEFAULT_THEME);
+    values.set("ddunddi-theme-daeun", "broken json");
+    assert.deepEqual(theme.readTheme("daeun"), theme.DEFAULT_THEME);
+    global.localStorage.setItem = () => { throw new Error("quota"); };
+    assert.throws(() => theme.saveTheme("yeachan", theme.DEFAULT_THEME), /quota/);
+  } finally { global.localStorage = previousStorage; global.window = previousWindow; }
+});
+
+test("밝고 어두운 대표 색상에서 버튼 글자가 읽히도록 자동 선택한다", () => {
+  for (const accent of ["#ffffff", "#000000", "#ff8fab", "#83b5e0"]) {
+    const style = theme.themeStyle({ ...theme.DEFAULT_THEME, accent });
+    assert.ok(theme.contrast(accent, style["--app-on-accent"]) >= 4.5);
+  }
+});
 const day = (key) => parseISO(key);
 const settings = { date: "2025-01-01", anniversaries: true, birthdays: true };
 const event = (id, at, extra = {}) => ({ id, title: "같은 제목", date: "2025-01-02", at, done: false, ...extra });
