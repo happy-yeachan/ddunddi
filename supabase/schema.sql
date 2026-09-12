@@ -41,6 +41,23 @@ create table if not exists public.pokes (
 
 create index if not exists pokes_created_at_idx on public.pokes (created_at desc);
 
+create table if not exists public.profiles (
+  id           uuid primary key default gen_random_uuid(),
+  author       text not null check (author in ('yeachan', 'daeun')),
+  subject      text not null check (subject in ('yeachan', 'daeun')),
+  photo_path   text,
+  name         text not null default '',
+  birth_date   date,
+  personality  text not null default '',
+  likes        text not null default '',
+  dislikes     text not null default '',
+  intro        text not null default '',
+  created_at   timestamptz not null default now(),
+  unique (author, subject)
+);
+
+create index if not exists profiles_author_subject_idx on public.profiles (author, subject);
+
 -- ── RLS ───────────────────────────────────────────────────────────────────
 -- 둘만 쓰는 앱이라 anon key 로 전부 읽고 쓴다.
 --
@@ -53,10 +70,12 @@ create index if not exists pokes_created_at_idx on public.pokes (created_at desc
 alter table public.dates       enable row level security;
 alter table public.date_photos enable row level security;
 alter table public.pokes       enable row level security;
+alter table public.profiles    enable row level security;
 
 drop policy if exists "dates anon all"       on public.dates;
 drop policy if exists "date_photos anon all" on public.date_photos;
 drop policy if exists "pokes anon all"       on public.pokes;
+drop policy if exists "profiles anon all"    on public.profiles;
 
 create policy "dates anon all"
   on public.dates for all
@@ -70,6 +89,11 @@ create policy "date_photos anon all"
 
 create policy "pokes anon all"
   on public.pokes for all
+  to anon, authenticated
+  using (true) with check (true);
+
+create policy "profiles anon all"
+  on public.profiles for all
   to anon, authenticated
   using (true) with check (true);
 
