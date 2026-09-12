@@ -11,7 +11,7 @@ import { photoUrl } from "@/lib/supabase";
 type Form = Omit<Profile, "id" | "author" | "subject">;
 const EMPTY: Form = { photo_path: null, name: "", birth_date: "", personality: "", likes: "", dislikes: "", intro: "" };
 const copyForm = (p: Profile | null): Form => p ? { photo_path: p.photo_path, name: p.name, birth_date: p.birth_date ?? "", personality: p.personality, likes: p.likes, dislikes: p.dislikes, intro: p.intro } : { ...EMPTY };
-const complete = (p: Form) => Boolean(p.photo_path && p.name.trim() && parseDay(p.birth_date));
+const complete = (p: Form) => Boolean(p.name.trim() && parseDay(p.birth_date));
 
 export default function UsPage() {
   const router = useRouter();
@@ -22,6 +22,7 @@ export default function UsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [photoName, setPhotoName] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
   const [retry, setRetry] = useState(0);
 
@@ -46,7 +47,7 @@ export default function UsPage() {
     if (!me || !subject || loading || saving || uploading || loadFailed) return;
     setSaving(true); setMessage("");
     if (!complete(form)) {
-      window.alert("사진, 이름, 올바른 생년월일을 모두 입력해주세요.");
+      window.alert("이름과 올바른 생년월일을 입력해주세요.");
       setSaving(false);
       return;
     }
@@ -59,9 +60,11 @@ export default function UsPage() {
     finally { setSaving(false); }
   }
   async function photo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file || !me || !subject || uploading || saving) return;
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !me || !subject || uploading || saving) return;
     setUploading(true); setMessage("사진을 업로드하는 중이에요…");
-    try { change("photo_path", await uploadProfilePhoto(me, subject, file)); setMessage("사진을 추가했어요. 저장을 눌러 완료해주세요"); }
+    try { change("photo_path", await uploadProfilePhoto(me, subject, file)); setPhotoName(file.name); setMessage("사진을 추가했어요. 저장을 눌러 완료해주세요"); }
     catch { setMessage("사진을 업로드하지 못했어요"); }
     finally { setUploading(false); }
   }
@@ -77,7 +80,21 @@ export default function UsPage() {
     <h2 className="mb-5 text-lg font-semibold">내가 쓰는 상대</h2>
     {loading ? <p className="py-10">불러오는 중…</p> : <form onSubmit={submit} className="space-y-4">
       <fieldset disabled={saving || uploading || loadFailed} className="space-y-4 disabled:opacity-60">
-      <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
+      <div>
+        <p className="mb-2 text-sm font-semibold">사진 <span className="font-normal text-[#ab8191]">(선택)</span></p>
+        <div className="flex items-center gap-4 rounded-2xl bg-white p-4">
+          <img src={form.photo_path ? photoUrl(form.photo_path) : "/default-profile.svg"} alt={form.photo_path ? "소개서 사진" : "하트를 안은 기본 프로필 캐릭터"} className="h-24 w-24 shrink-0 rounded-2xl object-cover" />
+          <div className="min-w-0">
+            <label className="relative inline-flex cursor-pointer rounded-full bg-[#fff0f5] px-4 py-2 text-sm font-semibold text-[#a45d73] focus-within:ring-2 focus-within:ring-[#ff8fab]">
+              {uploading ? "업로드 중…" : "사진 선택"}
+              <input type="file" accept="image/*" aria-label="소개서 사진 선택" aria-describedby="profile-photo-status" onChange={photo} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+            </label>
+            <p id="profile-photo-status" className="mt-2 break-all text-xs text-[#ab8191]">{uploading ? "사진을 올리고 있어요" : photoName || (form.photo_path ? "저장된 사진을 사용 중이에요" : "기본 이미지를 사용해요")}</p>
+            {form.photo_path && <button type="button" onClick={() => { change("photo_path", null); setPhotoName(""); setMessage("기본 이미지로 바꿨어요. 저장을 눌러 완료해주세요"); }} className="mt-2 text-xs text-[#a45d73] underline">기본 이미지로 변경</button>}
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-[#ab8191]">사진을 올리지 않아도 기본 이미지로 저장할 수 있어요.</p>
+      </div>
       <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
       <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", formatDateInput(e.target.value))} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
       <Field label="성격" value={form.personality} onChange={(v) => change("personality", v)} placeholder="어떤 사람인가요?" area />
