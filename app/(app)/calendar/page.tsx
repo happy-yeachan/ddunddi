@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { addDays, addMonths, differenceInCalendarDays, endOfMonth, parseISO, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import DateSheet from "@/components/DateSheet";
 import {
@@ -28,6 +29,8 @@ export default function CalendarPage() {
   const [showAnniversaries, setShowAnniversaries] = useState(true);
   const [showBirthdays, setShowBirthdays] = useState(true);
   const [settingsError, setSettingsError] = useState("");
+  const [holidays, setHolidays] = useState<Record<string, string[]>>({});
+  const [holidayError, setHolidayError] = useState("");
 
   // date 문자열 → { id, cover }. 화면에 보이는 42칸 전체를 담는다.
   const [covers, setCovers] = useState<Map<string, { cover: string | null }>>(new Map());
@@ -60,6 +63,19 @@ export default function CalendarPage() {
     return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   }, [cursor]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const years = [...new Set(days.map((day) => day.getFullYear()))];
+    setHolidays({}); setHolidayError("");
+    Promise.all(years.map(async (year) => {
+      const response = await fetch(`/api/holidays?year=${year}`, { signal: controller.signal });
+      if (!response.ok) throw new Error("공휴일 조회 실패");
+      return await response.json() as Record<string, string[]>;
+    })).then((data) => { if (!controller.signal.aborted) setHolidays(Object.assign({}, ...data)); })
+      .catch(() => { if (!controller.signal.aborted) setHolidayError("공휴일 정보를 불러오지 못했어요. 해당 연도 자료가 아직 없을 수 있어요."); });
+    return () => controller.abort();
+  }, [days]);
+
   // 이번 달이 아니라 화면에 보이는 42칸 범위를 통째로 읽는다. 앞뒤 달 칸에도
   // 기록이 있으면 썸네일이 보여야 한다.
   const refresh = useCallback(async () => {
@@ -88,6 +104,7 @@ export default function CalendarPage() {
 
   return (
     <main className="mx-auto max-w-md px-4 pt-[calc(1rem+env(safe-area-inset-top))]">
+      <div className="flex justify-end"><Link href="/calendar/settings" aria-label="캘린더 설정" className="rounded-full bg-white px-4 py-2 text-sm text-[#a45d73]">⚙ 설정</Link></div>
       <header className="flex items-center justify-between py-3">
         <button
           onClick={() => setCursor((c) => addMonths(c, -1))}
@@ -104,6 +121,7 @@ export default function CalendarPage() {
         </div>
       </header>
       {settingsError && <p role="alert" className="mb-3 text-sm text-[#a45270]">{settingsError}</p>}
+      {holidayError && <p role="status" className="mb-3 text-xs text-[#a45270]">{holidayError}</p>}
 
       <div className="grid grid-cols-7">
         {WEEKDAYS.map((w, i) => (
@@ -131,7 +149,8 @@ export default function CalendarPage() {
           const isBirthday = showBirthdays && birthdays.some((date) => date.slice(5) === key);
           const start = relationshipDate ? parseISO(relationshipDate) : null;
           const anniversaryDays = start ? differenceInCalendarDays(day, start) + 1 : 0;
-          const labels: string[] = isBirthday ? ["🎂 생일"] : [];
+          const holidayNames = holidays[dKey] ?? [];
+          const labels: string[] = isBirthday ? ["🎂"] : [];
           if (showAnniversaries && start && anniversaryDays > 0) {
             if (anniversaryDays === 1) labels.push("♥ 사귄 날");
             if (anniversaryDays % 100 === 0) labels.push(`${anniversaryDays}일`);
@@ -143,6 +162,8 @@ export default function CalendarPage() {
           return (
             <button
               key={day.toISOString()}
+              aria-label={`${dKey}${isBirthday ? " 생일" : ""} ${holidayNames.join(", ")} ${eventLabel}`}
+              title={holidayNames.join(", ")}
               onClick={() => setSelected(day)}
               className={[
                 "relative aspect-square overflow-hidden rounded-xl text-sm transition active:scale-95",
@@ -190,7 +211,7 @@ export default function CalendarPage() {
               <span
                 className={[
                   "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-                  cover && !isSelected ? "font-semibold text-white" : "",
+                  isSelected ? "" : holidayNames.length || day.getDay() === 0 ? (cover ? "rounded bg-white/95 px-1 font-semibold text-red-600" : "font-semibold text-red-600") : cover ? "font-semibold text-white" : day.getDay() === 6 ? "text-[#6684b5]" : "",
                 ].join(" ")}
               >
                 {day.getDate()}
@@ -200,6 +221,8 @@ export default function CalendarPage() {
           );
         })}
       </div>
+
+      {Object.keys(holidays).some((date) => date.startsWith(dateKey(cursor).slice(0, 7))) && <ul className="mt-4 space-y-1 text-xs text-red-600" aria-label="이번 달 공휴일">{Object.entries(holidays).filter(([date]) => date.startsWith(dateKey(cursor).slice(0, 7))).sort(([a], [b]) => a.localeCompare(b)).map(([date, names]) => <li key={date}>{Number(date.slice(8))}일 · {names.join(" · ")}</li>)}</ul>}
 
       {summary && (
         <section className="mt-6 rounded-2xl border border-[#f5d0da] bg-white px-4 py-4">

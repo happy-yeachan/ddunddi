@@ -18,6 +18,7 @@ export default function UsPage() {
   const [view, setView] = useState<(Profile | null)[] | null>(null);
   const [opening, setOpening] = useState(false);
   const [givenName, setGivenName] = useState("");
+  const [givenProfile, setGivenProfile] = useState<Profile | null>(null);
   const [events, setEvents] = useState<EventItem[]>([]);
 
   useEffect(() => {
@@ -32,7 +33,10 @@ export default function UsPage() {
     Promise.allSettled([loadProfile(id, id), loadProfile(id, other), loadRelationshipDate(), loadProfile(other, id)]).then((results) => {
       if (!alive) return;
       const [self, partner, dates, namedByPartner] = results;
-      if (namedByPartner.status === "fulfilled") setGivenName(namedByPartner.value?.name.trim() || "");
+      if (namedByPartner.status === "fulfilled") {
+        setGivenName(namedByPartner.value?.name.trim() || "");
+        setGivenProfile(namedByPartner.value);
+      }
       setProfiles([self.status === "fulfilled" ? self.value : null, partner.status === "fulfilled" ? partner.value : null]);
       if (dates.status === "fulfilled") setSettings(dates.value);
       if (results.some((r) => r.status === "rejected")) setError("일부 정보를 불러오지 못했어요. 잠시 후 다시 방문해주세요.");
@@ -88,7 +92,7 @@ export default function UsPage() {
         <span aria-hidden="true" className="absolute -right-5 -top-8 text-[140px] leading-none text-white/50">♡</span>
         <p className="relative text-xs tracking-[0.15em] text-[#a16b7c]">너와 나, 그리고 우리의 오늘</p>
         <div className="relative mt-7 flex items-center justify-center gap-4">
-          <Avatar profile={profiles[0]} name={selfName} onClick={() => setView([profiles[0]])} />
+          <Avatar profile={givenProfile} name={selfName} onClick={() => setView([profiles[0]])} />
           <span aria-hidden="true" className="pb-7 text-2xl text-[#e986a4]">♥</span>
           <Avatar profile={profiles[1]} name={partnerName} onClick={() => void openPartner()} disabled={opening} />
         </div>
@@ -98,7 +102,8 @@ export default function UsPage() {
           <p className="mt-3 text-xs text-[#a87586]">{start ? `${format(start, "yyyy.MM.dd")}부터 함께` : "오늘도 서로의 하루에 머물러요"}</p>
         </div>
       </section>
-      {!error && (!profiles[0]?.photo_path || !profiles[1]?.photo_path || !settings?.date) && <Link href="/us/settings" className="mt-4 flex items-center justify-between rounded-2xl border border-[#efdce3] bg-white p-4 text-sm text-[#9e4e6b]"><span>우리의 소개와 처음 만난 날 채우기</span><span>→</span></Link>}
+      {!error && (!profiles[0]?.photo_path || !profiles[1]?.photo_path) && <Link href="/us/settings" className="mt-4 flex items-center justify-between rounded-2xl border border-[#efdce3] bg-white p-4 text-sm text-[#9e4e6b]"><span>우리 소개 채우기</span><span>→</span></Link>}
+      {!error && !settings?.date && <Link href="/calendar/settings" className="mt-4 block rounded-2xl bg-white p-4 text-sm text-[#9e4e6b]">사귄 날짜 채우기 →</Link>}
       <section className="mt-7"><h2 className="mb-3 text-base font-bold">곧 찾아올 특별한 날</h2>
         <div className="rounded-3xl bg-white p-5 shadow-sm">
           {upcoming.length ? upcoming.slice(0, 5).map((event) => <div key={`${event.label}-${event.date.getTime()}`} className="flex items-center justify-between border-b border-[#f7edf1] py-3 first:pt-0 last:border-0 last:pb-0"><div><p className="text-sm font-semibold">{event.label}</p><p className="mt-1 text-xs text-[#b28c99]">{format(event.date, "yyyy.MM.dd")}{event.at !== undefined ? ` · ${event.at ? event.at.slice(0, 5) : "종일"}` : ""}</p></div><span className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-xs font-semibold text-[#ba6582]">{differenceInCalendarDays(event.date, today) === 0 ? "오늘" : `D-${differenceInCalendarDays(event.date, today)}`}</span></div>) : <p className="text-sm leading-6 text-[#ad8291]">우리만의 특별한 날을 기다려요.<br />기념일은 우상단 설정에서, 일정은 캘린더에서 더할 수 있어요.</p>}

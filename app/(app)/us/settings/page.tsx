@@ -6,7 +6,6 @@ import Link from "next/link";
 import { nameOf, PEOPLE, readMe, type PersonId } from "@/lib/me";
 import { loadProfile, saveProfile, uploadProfilePhoto, type Profile } from "@/lib/profiles";
 import { photoUrl } from "@/lib/supabase";
-import { loadRelationshipDate, saveRelationshipDate } from "@/lib/settings";
 
 type Form = Omit<Profile, "id" | "author" | "subject">;
 const EMPTY: Form = { photo_path: null, name: "", birth_date: "", personality: "", likes: "", dislikes: "", intro: "" };
@@ -21,19 +20,15 @@ export default function UsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [relationshipDate, setRelationshipDate] = useState("");
   const [dashboardProfiles, setDashboardProfiles] = useState<Profile[]>([]);
   const [editing, setEditing] = useState(true);
-  const [showAnniversaries, setShowAnniversaries] = useState(true);
-  const [showBirthdays, setShowBirthdays] = useState(true);
 
   useEffect(() => setMe(readMe()), []);
   useEffect(() => {
     if (!me) return;
     const other = PEOPLE.find((p) => p.id !== me)!.id;
-    Promise.all([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, date]) => {
+    Promise.all([loadProfile(me, me), loadProfile(me, other)]).then(([self, partner]) => {
       setDashboardProfiles([self, partner].filter(Boolean) as Profile[]);
-      setRelationshipDate(date?.date ?? ""); setShowAnniversaries(date?.anniversaries ?? true); setShowBirthdays(date?.birthdays ?? true);
     }).catch(() => setMessage("설정을 불러오지 못했어요. 잠시 후 다시 시도해주세요."));
   }, [me]);
   useEffect(() => {
@@ -81,20 +76,15 @@ export default function UsPage() {
     catch { setMessage("사진을 업로드하지 못했어요"); }
   }
 
-  async function saveSettings(e: React.FormEvent) {
-    e.preventDefault();
-    try { await saveRelationshipDate(relationshipDate, showAnniversaries, showBirthdays); router.push("/us"); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했어요"); }
-  }
 
   return <main className="mx-auto max-w-md px-6 pt-[calc(2rem+env(safe-area-inset-top))] pb-8">
     <Link href="/us" className="mb-5 inline-block text-sm text-[#a45d73]">← 우리 홈으로</Link>
     <h1 className="mb-2 text-2xl font-bold">설정 · 소개서 편집</h1>
-    <p className="mb-6 text-sm text-[#bda5ae]">두 사람의 소개와 기념일을 관리해요</p>
+    <p className="mb-6 text-sm text-[#bda5ae]">두 사람의 소개를 관리해요</p>
+    <Link href="/calendar/settings" className="mb-5 inline-block text-sm text-[#a45d73]">사귄 날짜 · 기념일은 캘린더 설정에서 →</Link>
     {message && <p role="status" className="mb-4 text-sm text-[#a45270]">{message}</p>}
     <section className="mb-6 grid grid-cols-2 gap-3">{dashboardProfiles.map((p) => <button key={`${p.author}-${p.subject}`} onClick={() => { setSubject(p.subject); setEditing(true); }} className="rounded-2xl bg-white p-4 text-left shadow-sm"><div className="mb-3 h-20 w-20 overflow-hidden rounded-2xl bg-[#ffe0e8]">{p.photo_path && <img src={photoUrl(p.photo_path)} alt="" className="h-full w-full object-cover" />}</div><p className="font-semibold">{p.name || nameOf(p.subject)}</p><p className="mt-1 text-xs text-[#bda5ae]">{p.subject === me ? "내 소개" : "상대 소개"}</p></button>)}</section>
     {dashboardProfiles.length === 2 && !editing ? <button onClick={() => setEditing(true)} className="mb-6 w-full rounded-2xl bg-[#ffe0e8] py-3 text-sm font-semibold text-[#e05c7e]">소개서와 설정 수정</button> : null}
-    {(editing || dashboardProfiles.length < 2) && <form onSubmit={saveSettings} className="mb-8 rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">우리 설정</h2><label className="block text-sm"><span className="mb-2 block text-[#bda5ae]">사귄 날짜</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={relationshipDate} onChange={(e) => setRelationshipDate(formatDateInput(e.target.value))} className="w-full rounded-xl border border-[#f5d0da] px-3 py-2 outline-none focus:border-[#ff8fab]" /></label><label className="mt-3 flex items-center justify-between text-sm"><span>기념일 표시</span><input type="checkbox" checked={showAnniversaries} onChange={(e) => setShowAnniversaries(e.target.checked)} /></label><label className="mt-3 flex items-center justify-between text-sm"><span>생일 표시</span><input type="checkbox" checked={showBirthdays} onChange={(e) => setShowBirthdays(e.target.checked)} /></label><button className="mt-3 rounded-xl bg-[#ffe0e8] px-4 py-2 text-sm font-semibold text-[#e05c7e]">설정 저장</button></form>}
     {(editing || dashboardProfiles.length < 2) && <h2 className="mb-2 text-lg font-bold">소개서 수정</h2>}
     <div className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-[#ffeef2] p-1">
       {me && PEOPLE.map((p) => <button key={p.id} onClick={() => setSubject(p.id)} className={`rounded-xl py-3 text-sm font-semibold ${subject === p.id ? "bg-white text-[#ff7092] shadow-sm" : "text-[#c5a8b2]"}`}>{p.id === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(p.id)}`}</button>)}
