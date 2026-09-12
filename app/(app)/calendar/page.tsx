@@ -22,6 +22,8 @@ export default function CalendarPage() {
   const [otherViews, setOtherViews] = useState<{ aboutMe: Profile | null; aboutSelf: Profile | null } | null>(null);
   const [relationshipDate, setRelationshipDate] = useState<string | null>(null);
   const [birthdays, setBirthdays] = useState<string[]>([]);
+  const [showAnniversaries, setShowAnniversaries] = useState(true);
+  const [showBirthdays, setShowBirthdays] = useState(true);
 
   // date 문자열 → { id, cover }. 화면에 보이는 42칸 전체를 담는다.
   const [covers, setCovers] = useState<Map<string, { cover: string | null }>>(new Map());
@@ -34,7 +36,7 @@ export default function CalendarPage() {
     loadProfile(me, other).then(setOtherProfile).catch(() => setOtherProfile(null));
     Promise.all([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, anniversary]) => {
       setBirthdays([self?.birth_date, partner?.birth_date].filter(Boolean) as string[]);
-      setRelationshipDate(anniversary);
+      setRelationshipDate(anniversary.date); setShowAnniversaries(anniversary.anniversaries); setShowBirthdays(anniversary.birthdays);
     }).catch(() => {});
   }, [me]);
 
@@ -113,8 +115,11 @@ export default function CalendarPage() {
           const entry = covers.get(dateKey(day));
           const cover = entry?.cover ?? null;
           const key = dateKey(day).slice(5);
-          const isBirthday = birthdays.some((date) => date.slice(5) === key);
-          const isAnniversary = Boolean(relationshipDate && relationshipDate.slice(5) === key);
+          const isBirthday = showBirthdays && birthdays.some((date) => date.slice(5) === key);
+          const anniversaryDays = relationshipDate ? Math.floor((day.getTime() - new Date(`${relationshipDate}T00:00:00`).getTime()) / 86400000) : -1;
+          const milestone = anniversaryDays >= 0 && (anniversaryDays === 0 || anniversaryDays % 100 === 0 || (day.getMonth() === new Date(`${relationshipDate}T00:00:00`).getMonth() && day.getDate() === new Date(`${relationshipDate}T00:00:00`).getDate()));
+          const isAnniversary = showAnniversaries && milestone;
+          const eventLabel = isBirthday ? "🎂 생일" : isAnniversary ? (anniversaryDays === 0 ? "사귄 날" : anniversaryDays % 100 === 0 ? `${anniversaryDays}일` : `${day.getFullYear() - new Date(`${relationshipDate}T00:00:00`).getFullYear()}주년`) : "";
 
           return (
             <button
@@ -154,7 +159,7 @@ export default function CalendarPage() {
               >
                 {day.getDate()}
               </span>
-              {(isBirthday || isAnniversary) && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] text-[#ff8fab]">{isAnniversary ? "♥" : "●"}</span>}
+              {eventLabel && <span title={eventLabel} className="absolute bottom-0 left-1/2 max-w-full -translate-x-1/2 truncate text-[8px] text-[#ff7092]">{eventLabel}</span>}
             </button>
           );
         })}

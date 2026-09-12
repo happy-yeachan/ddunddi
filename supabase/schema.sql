@@ -112,6 +112,8 @@ create index if not exists profiles_author_subject_idx on public.profiles (autho
 create table if not exists public.app_settings (
   id                  int primary key check (id = 1),
   relationship_date   date,
+  show_anniversaries  boolean not null default true,
+  show_birthdays      boolean not null default true,
   updated_at          timestamptz not null default now()
 );
 

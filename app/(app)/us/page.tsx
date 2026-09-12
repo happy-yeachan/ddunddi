@@ -22,6 +22,9 @@ export default function UsPage() {
   const [message, setMessage] = useState("");
   const [relationshipDate, setRelationshipDate] = useState("");
   const [dashboardProfiles, setDashboardProfiles] = useState<Profile[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [showAnniversaries, setShowAnniversaries] = useState(true);
+  const [showBirthdays, setShowBirthdays] = useState(true);
 
   useEffect(() => setMe(readMe()), []);
   useEffect(() => {
@@ -29,7 +32,7 @@ export default function UsPage() {
     const other = PEOPLE.find((p) => p.id !== me)!.id;
     Promise.all([loadProfile(me, me), loadProfile(me, other), loadRelationshipDate()]).then(([self, partner, date]) => {
       setDashboardProfiles([self, partner].filter(Boolean) as Profile[]);
-      setRelationshipDate(date ?? "");
+      setRelationshipDate(date?.date ?? ""); setShowAnniversaries(date?.anniversaries ?? true); setShowBirthdays(date?.birthdays ?? true);
     }).catch(() => {});
   }, [me]);
   useEffect(() => {
@@ -79,22 +82,21 @@ export default function UsPage() {
 
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
-    try { await saveRelationshipDate(relationshipDate); setMessage("설정을 저장했어요"); }
+    try { await saveRelationshipDate(relationshipDate, showAnniversaries, showBirthdays); setMessage("설정을 저장했어요"); }
     catch { setMessage("설정을 저장하지 못했어요"); }
   }
 
   return <main className="mx-auto max-w-md px-6 pt-[calc(2rem+env(safe-area-inset-top))] pb-8">
     <h1 className="mb-2 text-2xl font-bold">우리</h1>
     <p className="mb-6 text-sm text-[#bda5ae]">우리의 오늘과 기념일을 모아두는 곳</p>
-    <section className="mb-6 grid grid-cols-2 gap-3">
-      {dashboardProfiles.map((p) => <button key={`${p.author}-${p.subject}`} onClick={() => setSubject(p.subject)} className="rounded-2xl bg-white p-4 text-left shadow-sm"><div className="mb-3 h-20 w-20 overflow-hidden rounded-2xl bg-[#ffe0e8]">{p.photo_path && <img src={photoUrl(p.photo_path)} alt="" className="h-full w-full object-cover" />}</div><p className="font-semibold">{p.name || nameOf(p.subject)}</p><p className="mt-1 text-xs text-[#bda5ae]">{p.subject === me ? "내 소개" : "상대 소개"}</p></button>)}
-    </section>
-    <form onSubmit={saveSettings} className="mb-8 rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">우리 설정</h2><label className="block text-sm"><span className="mb-2 block text-[#bda5ae]">사귄 날짜</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={relationshipDate} onChange={(e) => setRelationshipDate(formatDateInput(e.target.value))} className="w-full rounded-xl border border-[#f5d0da] px-3 py-2 outline-none focus:border-[#ff8fab]" /></label><button className="mt-3 rounded-xl bg-[#ffe0e8] px-4 py-2 text-sm font-semibold text-[#e05c7e]">설정 저장</button></form>
-    <h2 className="mb-2 text-lg font-bold">소개서 수정</h2>
+    <section className="mb-6 grid grid-cols-2 gap-3">{dashboardProfiles.map((p) => <button key={`${p.author}-${p.subject}`} onClick={() => { setSubject(p.subject); setEditing(true); }} className="rounded-2xl bg-white p-4 text-left shadow-sm"><div className="mb-3 h-20 w-20 overflow-hidden rounded-2xl bg-[#ffe0e8]">{p.photo_path && <img src={photoUrl(p.photo_path)} alt="" className="h-full w-full object-cover" />}</div><p className="font-semibold">{p.name || nameOf(p.subject)}</p><p className="mt-1 text-xs text-[#bda5ae]">{p.subject === me ? "내 소개" : "상대 소개"}</p></button>)}</section>
+    {dashboardProfiles.length === 2 && !editing ? <button onClick={() => setEditing(true)} className="mb-6 w-full rounded-2xl bg-[#ffe0e8] py-3 text-sm font-semibold text-[#e05c7e]">소개서와 설정 수정</button> : null}
+    {(editing || dashboardProfiles.length < 2) && <form onSubmit={saveSettings} className="mb-8 rounded-2xl bg-white p-4"><h2 className="mb-3 font-semibold">우리 설정</h2><label className="block text-sm"><span className="mb-2 block text-[#bda5ae]">사귄 날짜</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={relationshipDate} onChange={(e) => setRelationshipDate(formatDateInput(e.target.value))} className="w-full rounded-xl border border-[#f5d0da] px-3 py-2 outline-none focus:border-[#ff8fab]" /></label><label className="mt-3 flex items-center justify-between text-sm"><span>기념일 표시</span><input type="checkbox" checked={showAnniversaries} onChange={(e) => setShowAnniversaries(e.target.checked)} /></label><label className="mt-3 flex items-center justify-between text-sm"><span>생일 표시</span><input type="checkbox" checked={showBirthdays} onChange={(e) => setShowBirthdays(e.target.checked)} /></label><button className="mt-3 rounded-xl bg-[#ffe0e8] px-4 py-2 text-sm font-semibold text-[#e05c7e]">설정 저장</button></form>}
+    {(editing || dashboardProfiles.length < 2) && <h2 className="mb-2 text-lg font-bold">소개서 수정</h2>}
     <div className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-[#ffeef2] p-1">
       {me && PEOPLE.map((p) => <button key={p.id} onClick={() => setSubject(p.id)} className={`rounded-xl py-3 text-sm font-semibold ${subject === p.id ? "bg-white text-[#ff7092] shadow-sm" : "text-[#c5a8b2]"}`}>{p.id === me ? "내가 쓰는 나" : `내가 쓰는 ${nameOf(p.id)}`}</button>)}
     </div>
-    {loading ? <div className="py-16 text-center text-sm text-[#c5a8b2]">불러오는 중…</div> : <form onSubmit={submit} className="space-y-4">
+    {(editing || dashboardProfiles.length < 2) && (loading ? <div className="py-16 text-center text-sm text-[#c5a8b2]">불러오는 중…</div> : <form onSubmit={submit} className="space-y-4">
       <label className="block"><span className="mb-2 block text-sm font-semibold">사진</span><input type="file" accept="image/*" onChange={photo} className="w-full text-sm" />{form.photo_path && <img src={photoUrl(form.photo_path)} alt="소개서 사진" className="mt-3 h-32 w-32 rounded-2xl object-cover" />}</label>
       <Field label="이름" value={form.name} onChange={(v) => change("name", v)} placeholder="이름을 적어주세요" />
       <label className="block"><span className="mb-2 block text-sm font-semibold">생년월일</span><input type="text" inputMode="numeric" pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={form.birth_date} onChange={(e) => change("birth_date", formatDateInput(e.target.value))} className="w-full rounded-2xl border border-[#f5d0da] bg-white px-4 py-3 outline-none placeholder:text-[#d8b6c0] focus:border-[#ff8fab]" /></label>
@@ -104,7 +106,7 @@ export default function UsPage() {
       <Field label="한줄 소개" value={form.intro} onChange={(v) => change("intro", v)} placeholder="한 문장으로 소개해주세요" />
       <button disabled={saving} className="w-full rounded-2xl bg-[#ff8fab] py-4 text-lg font-semibold text-white disabled:opacity-50">{saving ? "저장 중…" : "소개서 저장"}</button>
       {message && <p className="text-center text-sm text-[#e05c7e]">{message}</p>}
-    </form>}
+    </form>)}
   </main>;
 }
 
