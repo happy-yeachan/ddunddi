@@ -79,23 +79,17 @@ export default function UsPage() {
       </Link>
     </header>
     {loading ? <p className="py-20 text-center text-app-muted">우리의 오늘을 불러오는 중…</p> : <>
-      <section aria-label="우리의 프로필과 함께한 시간" className="overflow-hidden rounded-app border border-app-border/50 bg-white px-6 pb-6 pt-7 shadow-[0_8px_32px_-24px_rgba(0,0,0,0.18)]">
-        <div className="flex items-center gap-3" aria-hidden="true">
-          <span className="h-px w-6 bg-app-accent" />
-          <span className="text-[10px] font-medium tracking-[0.24em] text-app-muted">OUR DAYS</span>
-        </div>
-        <div className="mb-8 mt-6">
-          <p className="text-sm text-app-muted">{elapsed !== null && elapsed > 0 ? "우리가 함께한 시간" : "함께 써 내려갈 날들"}</p>
-          {elapsed !== null && elapsed > 0 ? <p className="mt-2 flex flex-wrap items-baseline gap-x-2 text-app-text"><span className="text-[clamp(2.75rem,12vw,3.75rem)] font-light leading-none tracking-[-0.055em] tabular-nums">{elapsed.toLocaleString()}</span><span className="text-base font-normal">일째</span></p> : <p className="mt-3 text-2xl font-light tracking-tight text-app-text">우리의 시작</p>}
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
+      <section className="relative overflow-hidden rounded-app bg-gradient-to-br from-app-soft via-app-soft to-app-soft px-5 py-9 text-center">
+        <p className="relative text-xs tracking-[0.15em] text-app-muted">너와 나, 그리고 우리의 오늘</p>
+        <div className="relative mt-7 flex items-center justify-center gap-4">
           <Avatar profile={profiles[0]} name={selfName} onClick={() => setView([profiles[0]])} />
-          <span aria-hidden="true" className="pb-8 font-serif text-xl italic text-app-muted/60">&amp;</span>
+          <span aria-hidden="true" className="pb-7 text-2xl text-app-accent">♥</span>
           <Avatar profile={profiles[1]} name={partnerName} onClick={() => void openPartner()} disabled={opening} />
         </div>
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-app-border/50 pt-4 text-xs text-app-muted">
-          <span>{start ? "우리의 첫날" : "하루하루, 우리답게"}</span>
-          {start && <time dateTime={format(start, "yyyy-MM-dd")} className="tracking-[0.08em] tabular-nums">{format(start, "yyyy.MM.dd")}</time>}
+        <div className="relative mt-7 border-t border-white/70 pt-6">
+          <p className="text-sm text-app-muted">{elapsed !== null && elapsed > 0 ? "함께한 지" : "함께 쌓아갈 우리 이야기"}</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight text-app-text">{elapsed !== null && elapsed > 0 ? `${elapsed.toLocaleString()}일` : `${selfName} ♥ ${partnerName}`}</p>
+          <p className="mt-3 text-xs text-app-muted">{start ? `${format(start, "yyyy.MM.dd")}부터 함께` : "오늘도 서로의 하루에 머물러요"}</p>
         </div>
       </section>
       {!error && (!profiles[1]?.name.trim() || !parseDay(profiles[1]?.birth_date)) && <Link href="/us/settings/profile" className="mt-4 flex items-center justify-between rounded-2xl border border-app-border bg-white p-4 text-sm text-app-text"><span>우리 소개 채우기</span><span>→</span></Link>}
@@ -114,5 +108,5 @@ export default function UsPage() {
 }
 
 function Avatar({ profile, name, onClick, disabled }: { profile: Profile | null | undefined; name: string; onClick: () => void; disabled?: boolean }) {
-  return <button onClick={onClick} disabled={disabled} aria-label={`${name} 프로필 보기`} className="group min-w-0 rounded-xl text-left outline-offset-4 transition focus-visible:outline-2 focus-visible:outline-app-accent disabled:opacity-50"><div className="aspect-[4/5] w-full overflow-hidden rounded-xl bg-app-soft"><img src={profile?.photo_path ? photoUrl(profile.photo_path) : "/default-profile.svg"} alt="" className="h-full w-full object-cover transition-transform duration-300 motion-safe:group-hover:scale-[1.03]" /></div><p className="mt-3 truncate text-center text-sm font-medium text-app-text">{name}</p></button>;
+  return <button onClick={onClick} disabled={disabled} aria-label={`${name} 프로필 보기`} className="relative min-w-0 max-w-[40%] disabled:opacity-50"><div className="mx-auto h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-white/60 shadow-sm"><img src={profile?.photo_path ? photoUrl(profile.photo_path) : "/default-profile.svg"} alt="" className="h-full w-full object-cover" /></div><p className="mt-3 truncate text-sm font-semibold text-app-text">{name}</p></button>;
 }
