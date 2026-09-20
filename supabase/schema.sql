@@ -133,6 +133,41 @@ create table if not exists public.profiles (
 
 create index if not exists profiles_author_subject_idx on public.profiles (author, subject);
 
+-- 비밀키와 구독 주소는 GATE_PASSWORD로 서버에서 암호화한 값만 저장한다.
+create table if not exists public.push_config (id text primary key, payload text not null);
+alter table public.push_config enable row level security;
+drop policy if exists "push config read" on public.push_config;
+create policy "push config read" on public.push_config for select to anon using (true);
+grant select on public.push_config to anon;
+revoke insert, update, delete on public.push_config from anon, authenticated;
+
+create table if not exists public.push_subscriptions (
+  id text primary key,
+  person text not null check (person in ('yeachan', 'daeun')),
+  payload text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+drop policy if exists "push subscriptions encrypted" on public.push_subscriptions;
+create policy "push subscriptions encrypted" on public.push_subscriptions for all to anon using (true) with check (true);
+grant select, insert, update, delete on public.push_subscriptions to anon;
+
+create or replace function public.record_push_poke(poke_id uuid, poke_sender text, poke_recipient text)
+returns text language plpgsql set search_path = public as $$
+begin
+  if poke_sender not in ('yeachan', 'daeun') or poke_recipient not in ('yeachan', 'daeun') or poke_sender = poke_recipient then
+    raise exception 'invalid people';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('push-poke:' || poke_sender));
+  if exists (select 1 from public.pokes where id = poke_id) then return 'duplicate'; end if;
+  if exists (select 1 from public.pokes where sender = poke_sender and created_at > now() - interval '10 seconds') then return 'limited'; end if;
+  insert into public.pokes (id, sender, recipient) values (poke_id, poke_sender, poke_recipient);
+  return 'created';
+end;
+$$;
+revoke all on function public.record_push_poke(uuid, text, text) from public;
+grant execute on function public.record_push_poke(uuid, text, text) to anon;
+
 create table if not exists public.app_settings (
   id                  int primary key check (id = 1),
   relationship_date   date,

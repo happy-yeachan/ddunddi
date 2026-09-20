@@ -20,6 +20,62 @@ function loadTs(file, stubs = {}) {
 
 const dates = loadTs("lib/calendar-dates.ts");
 const theme = loadTs("lib/theme.ts");
+const pushSecurity = loadTs("lib/push-security.ts");
+
+test("푸시 세션은 만료와 변조를 거부하고 구독 암호문은 인증한다", () => {
+  const previous = process.env.GATE_PASSWORD;
+  process.env.GATE_PASSWORD = "test-only-push-secret";
+  try {
+    const token = pushSecurity.sessionToken();
+    assert.equal(pushSecurity.validSession(token), true);
+    assert.equal(pushSecurity.validSession(token + "x"), false);
+    assert.equal(pushSecurity.validSession(pushSecurity.sessionToken(Date.now() - 1000)), false);
+    const data = { endpoint: "https://fcm.googleapis.com/test", person: "daeun" };
+    const ciphertext = pushSecurity.encrypt(data);
+    assert.deepEqual(pushSecurity.decrypt(ciphertext), data);
+    const tampered = Buffer.from(ciphertext, "base64url"); tampered[30] ^= 1;
+    assert.throws(() => pushSecurity.decrypt(tampered.toString("base64url")));
+  } finally { if (previous === undefined) delete process.env.GATE_PASSWORD; else process.env.GATE_PASSWORD = previous; }
+});
+
+test("푸시 endpoint는 내부망과 위장 도메인을 거부한다", () => {
+  for (const endpoint of ["http://fcm.googleapis.com/test", "https://127.0.0.1/x", "https://fcm.googleapis.com.evil.test/x", "https://a@fcm.googleapis.com/x", "https://fcm.googleapis.com:8443/x"]) assert.equal(pushSecurity.validEndpoint(endpoint), false);
+  for (const endpoint of ["https://fcm.googleapis.com/x", "https://web.push.apple.com/x", "https://updates.push.services.mozilla.com/x"]) assert.equal(pushSecurity.validEndpoint(endpoint), true);
+});
+
+test("찌르기 API는 인증·중복·쿨다운을 검사하고 푸시 실패와 기록 성공을 구분한다", async () => {
+  const { NextRequest } = require("next/server");
+  const previous = process.env.GATE_PASSWORD;
+  process.env.GATE_PASSWORD = "test-only-push-secret";
+  let recorded = "created", sendCount = 0, expired = false, deleted = false;
+  const subscription = { endpoint: "https://fcm.googleapis.com/x", keys: { auth: "a", p256dh: "b" } };
+  const db = {
+    rpc: async () => ({ data: recorded, error: null }),
+    from: (table) => {
+      const query = {
+        select() { return this; }, eq() { return this; },
+        single: async () => ({ data: { payload: pushSecurity.encrypt({ publicKey: "public", privateKey: "private" }) } }),
+        maybeSingle: async () => ({ data: { name: "상대가 정한 별명" } }),
+        delete() { deleted = true; return this; },
+        then(resolve) { return Promise.resolve({ data: table === "push_subscriptions" ? [{ id: "id", payload: pushSecurity.encrypt({ person: "daeun", subscription }) }] : null }).then(resolve); },
+      };
+      return query;
+    },
+  };
+  const route = loadTs("app/api/push/route.ts", {
+    "@/lib/push-security": pushSecurity, "@/lib/supabase": { supabase: db }, "@/lib/me": { nameOf: () => "이름" },
+    "web-push": { sendNotification: async (_sub, payload) => { sendCount++; assert.match(payload, /상대가 정한 별명/); if (expired) throw { statusCode: 410 }; } },
+  });
+  const request = (cookie = true, origin = "https://app.test") => new NextRequest("https://app.test/api/push", { method: "POST", headers: { origin, "Content-Type": "application/json", ...(cookie ? { cookie: `ddunddi-session=${pushSecurity.sessionToken()}` } : {}) }, body: JSON.stringify({ action: "poke", person: "yeachan", id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }) });
+  try {
+    assert.equal((await route.POST(request(false))).status, 401);
+    assert.equal((await route.POST(request(true, "https://evil.test"))).status, 403);
+    recorded = "duplicate"; await route.POST(request()); assert.equal(sendCount, 0);
+    recorded = "limited"; assert.equal((await route.POST(request())).status, 429); assert.equal(sendCount, 0);
+    recorded = "created"; const success = await route.POST(request()); assert.match((await success.json()).message, /알림을 보냈/); assert.equal(sendCount, 1);
+    expired = true; const failure = await route.POST(request()); assert.equal(failure.status, 200); assert.match((await failure.json()).message, /저장했지만/); assert.equal(deleted, true);
+  } finally { if (previous === undefined) delete process.env.GATE_PASSWORD; else process.env.GATE_PASSWORD = previous; }
+});
 
 test("손상된 꾸미기 설정은 안전한 기본값으로 복구한다", () => {
   assert.deepEqual(theme.normalizeTheme(null), theme.DEFAULT_THEME);

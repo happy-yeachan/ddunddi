@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
+import { sessionToken } from "@/lib/push-security";
 
 // 비밀번호는 서버에서만 비교한다. NEXT_PUBLIC_ 으로 내보내면 값이
 // 브라우저 번들에 그대로 박혀서 게이트가 의미를 잃는다.
@@ -19,5 +20,7 @@ export async function POST(req: Request) {
   const b = Buffer.from(expected);
   const ok = a.length === b.length && timingSafeEqual(a, b);
 
-  return NextResponse.json({ ok }, { status: ok ? 200 : 401 });
+  const response = NextResponse.json({ ok }, { status: ok ? 200 : 401 });
+  if (ok) response.cookies.set("ddunddi-session", sessionToken(), { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 180 * 86400 });
+  return response;
 }

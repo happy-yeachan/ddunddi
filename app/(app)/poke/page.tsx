@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import PushSettings from "@/components/PushSettings";
 import { formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
 import { nameOf, PEOPLE, readMe, type PersonId } from "@/lib/me";
@@ -11,6 +12,8 @@ export default function PokePage() {
   const [pokes, setPokes] = useState<Poke[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const pendingId = useRef<string | null>(null);
+  const sending = useRef(false);
 
   useEffect(() => {
     setMe(readMe());
@@ -22,17 +25,21 @@ export default function PokePage() {
   const other = PEOPLE.find((person) => person.id !== me);
 
   async function poke() {
-    if (!me || !other || busy) return;
+    if (!me || !other || sending.current) return;
+    sending.current = true;
     setBusy(true);
     setMessage("");
     try {
-      await sendPoke(me, other.id);
-      setPokes(await loadRecentPokes());
-      setMessage(`${other.name}에게 찔렀다고 알려줬어요 💕`);
-    } catch {
-      setMessage("전달하지 못했어요. 잠시 후 다시 시도해주세요");
+      pendingId.current ??= crypto.randomUUID();
+      const result = await sendPoke(me, other.id, pendingId.current);
+      pendingId.current = null;
+      setMessage(result.message);
+      try { setPokes(await loadRecentPokes()); } catch { setMessage(`${result.message} 기록 목록은 새로고침 후 확인해주세요.`); }
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "전달하지 못했어요. 잠시 후 다시 시도해주세요");
     } finally {
       setBusy(false);
+      sending.current = false;
     }
   }
 
@@ -54,6 +61,7 @@ export default function PokePage() {
         </button>
       )}
       {message && <p className="mt-4 text-center text-sm text-[#e05c7e]">{message}</p>}
+      <PushSettings />
 
       <section className="mt-10">
         <h2 className="mb-3 text-sm font-semibold text-app-muted">최근 기록</h2>
