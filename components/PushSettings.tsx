@@ -37,7 +37,7 @@ export default function PushSettings() {
         const response = await fetch("/api/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "unsubscribe", person: me, endpoint: subscription.endpoint }) });
         if (!response.ok) throw new Error("알림 해제에 실패했어요. 다시 시도해주세요.");
         await subscription.unsubscribe();
-        localStorage.removeItem("ddunddi-push-person"); setEnabled(false); setMessage("이 기기의 찌르기 알림을 껐어요."); return;
+        localStorage.removeItem("ddunddi-push-person"); setEnabled(false); setMessage("이 기기의 앱 알림을 껐어요."); return;
       }
       const bytes = Uint8Array.from(atob(key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
       if (subscription) {
@@ -48,13 +48,13 @@ export default function PushSettings() {
       const response = await fetch("/api/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "subscribe", person: me, subscription: subscription.toJSON() }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "알림 설정을 저장하지 못했어요.");
-      localStorage.setItem("ddunddi-push-person", me); setEnabled(true); setMessage("이 기기에서 찌르기 알림을 받을 수 있어요.");
+      localStorage.setItem("ddunddi-push-person", me); setEnabled(true); setMessage("이 기기에서 앱 알림을 받을 수 있어요.");
     } catch (e) { setMessage((e as Error).message || "알림을 설정하지 못했어요."); }
     finally { setBusy(false); }
   }
   return <section className="mt-6 rounded-app border border-app-border bg-white p-5">
-    <h2 className="font-semibold">찌르기 알림</h2>
-    <p className="mt-2 text-sm leading-relaxed text-app-muted">상대가 찌르면 이 기기에서 알림을 받아요. 서로 각자의 기기에서 켜주세요.</p>
+    <h2 className="font-semibold">앱 알림</h2>
+    <p className="mt-2 text-sm leading-relaxed text-app-muted">상대가 찌르거나 캘린더에 일정·사진·일기를 추가하면 알림을 받아요. 서로 각자의 기기에서 켜주세요.</p>
     <p className="mt-2 text-xs leading-relaxed text-app-muted">아이폰·아이패드는 iOS 16.4 이상에서 Safari → 공유 → 홈 화면에 추가 후, 홈 화면의 앱을 열어 설정해주세요.</p>
     {supported ? <button onClick={toggle} disabled={busy || !key} className="mt-4 rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-on-accent disabled:opacity-50">{busy ? "설정 중…" : enabled ? "이 기기 알림 끄기" : "이 기기 알림 받기"}</button> : <p className="mt-4 text-sm">이 브라우저에서는 알림을 사용할 수 없어요. 지원되는 브라우저나 홈 화면 앱에서 열어주세요.</p>}
     {message && <p role="status" className="mt-3 text-sm">{message}</p>}

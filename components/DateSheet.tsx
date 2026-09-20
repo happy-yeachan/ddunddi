@@ -5,6 +5,7 @@ import { photoUrl } from "@/lib/supabase";
 import { PEOPLE, nameOf, type PersonId } from "@/lib/me";
 import { loadProfile } from "@/lib/profiles";
 import { useToday } from "@/lib/use-today";
+import { notifyCalendar, type CalendarAdditions } from "@/lib/calendar-notifications";
 import {
   applyEvents,
   deleteNote,
@@ -126,6 +127,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
     setSaving(true);
     setError("");
 
+    const additions: CalendarAdditions = { events: [], photos: [], notes: [] };
     try {
       const noteChanged = !isFuture && draft !== saved;
       const dateId = !isFuture && (picked.length > 0 || (noteChanged && draft.trim())) ? await ensureDate(dateKey) : null;
@@ -146,7 +148,7 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         for (const [i, file] of picked.entries()) {
           try {
             const blob = await resizeImage(file);
-            await uploadPhoto(dateKey, dateId!, blob, base + i);
+            additions.photos.push(await uploadPhoto(dateKey, dateId!, blob, base + i));
             // 완료된 사진은 대기열에서 즉시 빼서 이후 실패·재시도에 중복 업로드하지 않는다.
             setPicked((prev) => { const at = prev.indexOf(file); return at < 0 ? prev : prev.filter((_, index) => index !== at); });
           } catch (e) {
@@ -157,12 +159,16 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
         }
       }
 
-      if (eventsChanged) await applyEvents(dateKey, me, events, eventDraft);
+      if (eventsChanged) {
+        additions.events = eventDraft.filter((event) => event.id && !events.some((old) => old.id === event.id)).map((event) => event.id!);
+        await applyEvents(dateKey, me, events, eventDraft);
+      }
 
       const text = isFuture ? "" : draft.trim();
       const mine = notes.find((n) => n.author === me);
       if (noteChanged && text && dateId) {
-        await upsertNote(dateId, me, text);
+        const note = await upsertNote(dateId, me, text);
+        if (!mine) additions.notes.push(note.id);
       } else if (noteChanged && mine) {
         // 일기를 비우고 저장하면 지운다는 뜻이다.
         await deleteNote(mine.id);
@@ -196,6 +202,13 @@ export default function DateSheet({ dateKey, label, me, onClose, onSaved }: Prop
       if (freshEvents.status === "fulfilled") setEvents(freshEvents.value);
       onSaved();
     } finally {
+      // 부분 성공에서도 서버가 실제 저장된 항목만 확인해 한 번 알린다.
+      try {
+        const notice = await notifyCalendar(me, dateKey, additions);
+        if (notice) setError((previous) => [previous, notice].filter(Boolean).join(" "));
+      } catch {
+        setError((previous) => [previous, "기록은 저장했지만 상대 알림 전송에 실패했어요."].filter(Boolean).join(" "));
+      }
       saveLock.current = false;
       setSaving(false);
     }

@@ -22,6 +22,51 @@ const dates = loadTs("lib/calendar-dates.ts");
 const theme = loadTs("lib/theme.ts");
 const pushSecurity = loadTs("lib/push-security.ts");
 
+test("캘린더 알림은 저장된 데이터만 묶고 재요청에서 중복을 제거한다", async () => {
+  const seen = new Set(), scopes = [];
+  const db = {
+    from(table) {
+      return {
+        select() { return this; },
+        eq(column, value) { scopes.push([table, column, value]); return this; },
+        in() { return Promise.resolve({ data: table === "events" ? [{ id: "event-stored" }] : table === "date_photos" ? [{ id: "photo-stored" }] : [{ id: "note-stored" }] }); },
+        maybeSingle: async () => ({ data: { id: "day" } }),
+      };
+    },
+    rpc: async (_name, { resource_keys }) => {
+      const data = resource_keys.filter((key) => !seen.has(key));
+      data.forEach((key) => seen.add(key));
+      return { data };
+    },
+  };
+  const { calendarClaims } = loadTs("lib/calendar-push-server.ts", { "./supabase": { supabase: db }, "./calendar-dates": dates });
+  const additions = { events: ["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"], photos: ["2026-09-20/photo.jpg"], notes: ["cccccccc-cccc-cccc-cccc-cccccccccccc"] };
+  assert.deepEqual(await calendarClaims("yeachan", "2026-09-20", additions), { date: "2026-09-20", summary: "일정·사진·일기" });
+  assert.deepEqual([...seen], ["event:event-stored", "photo:photo-stored", "note:note-stored"]);
+  assert.equal((await calendarClaims("yeachan", "2026-09-20", additions)).summary, "");
+  assert.ok(scopes.some(([table, column, value]) => table === "events" && column === "author" && value === "yeachan"));
+  assert.ok(scopes.some(([table, column, value]) => table === "date_notes" && column === "author" && value === "yeachan"));
+  await assert.rejects(calendarClaims("yeachan", "2026-02-30", additions));
+});
+
+test("추가 내용 없는 저장은 알림을 요청하지 않는다", async () => {
+  const previous = global.fetch;
+  global.fetch = () => { throw new Error("should not send"); };
+  try {
+    const { notifyCalendar } = loadTs("lib/calendar-notifications.ts");
+    assert.equal(await notifyCalendar("yeachan", "2026-09-20", { events: [], photos: [], notes: [] }), undefined);
+  } finally { global.fetch = previous; }
+});
+
+test("캘린더 알림은 해당 날짜로 연결하고 외부 URL은 열지 않는다", () => {
+  const { runInNewContext } = require("node:vm");
+  const context = { self: { addEventListener() {} } };
+  runInNewContext(readFileSync(resolve(__dirname, "../public/sw.js"), "utf8"), context);
+  assert.equal(context.notificationUrl("/calendar?date=2026-09-20"), "/calendar?date=2026-09-20");
+  assert.equal(context.notificationUrl("https://evil.test"), "/poke");
+  assert.equal(context.notificationUrl(undefined), "/poke");
+});
+
 test("알림 클릭은 열린 앱을 활성화하고 종료된 창이면 새 앱 창을 연다", async () => {
   const { runInNewContext } = require("node:vm");
   for (const mode of ["existing", "closed", "focus-failed", "navigate-failed", "null-navigation"]) {
@@ -85,6 +130,7 @@ test("찌르기 API는 추가 로그인 없이 동작하며 외부 출처·중�
   };
   const route = loadTs("app/api/push/route.ts", {
     "@/lib/push-security": pushSecurity, "@/lib/supabase": { supabase: db }, "@/lib/me": { nameOf: () => "이름" },
+    "@/lib/calendar-push-server": { calendarClaims: async () => ({ date: "2026-09-20", summary: "일정·사진" }) },
     "web-push": { sendNotification: async (_sub, payload) => { sendCount++; assert.match(payload, /상대가 정한 별명/); if (expired) throw { statusCode: 410 }; } },
   });
   const request = (cookie = true, origin = "https://app.test") => new NextRequest("https://app.test/api/push", { method: "POST", headers: { origin, "Content-Type": "application/json", ...(cookie ? { cookie: `ddunddi-session=${pushSecurity.sessionToken()}` } : {}) }, body: JSON.stringify({ action: "poke", person: "yeachan", id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }) });

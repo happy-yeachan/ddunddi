@@ -6,13 +6,13 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification("뚠띠뚠띠", {
     body: data.body || "상대가 나를 찔렀어요. 앱에서 확인해 보세요.",
     icon: "/icon-192.png", badge: "/favicon.png",
-    tag: data.id || "poke", data: { url: "/poke" },
+    tag: data.id || "poke", data: { url: notificationUrl(data.url) },
   }));
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil((async () => {
-    const target = new URL("/poke", self.location.origin).href;
+    const target = new URL(notificationUrl(event.notification.data?.url), self.location.origin).href;
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows.filter((item) => new URL(item.url).origin === self.location.origin)) {
       try {
@@ -30,3 +30,8 @@ self.addEventListener("notificationclick", (event) => {
     if (opened) await opened.focus().catch(() => {});
   })());
 });
+
+function notificationUrl(value) {
+  // 푸시 내용으로 외부 사이트나 임의 경로를 열지 않는다.
+  return typeof value === "string" && /^\/calendar\?date=\d{4}-\d{2}-\d{2}$/.test(value) ? value : "/poke";
+}

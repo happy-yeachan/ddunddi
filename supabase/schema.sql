@@ -135,6 +135,23 @@ create index if not exists profiles_author_subject_idx on public.profiles (autho
 
 -- 비밀키와 구독 주소는 GATE_PASSWORD로 서버에서 암호화한 값만 저장한다.
 create table if not exists public.push_config (id text primary key, payload text not null);
+create table if not exists public.calendar_notification_claims (resource_key text primary key, created_at timestamptz not null default now());
+alter table public.calendar_notification_claims enable row level security;
+drop policy if exists "calendar claim insert" on public.calendar_notification_claims;
+create policy "calendar claim insert" on public.calendar_notification_claims for insert to anon with check (true);
+drop policy if exists "calendar claim read" on public.calendar_notification_claims;
+create policy "calendar claim read" on public.calendar_notification_claims for select to anon using (true);
+grant select, insert on public.calendar_notification_claims to anon;
+create or replace function public.claim_calendar_notifications(resource_keys text[])
+returns text[] language sql set search_path = public as $$
+  with inserted as (
+    insert into public.calendar_notification_claims (resource_key)
+    select distinct unnest(resource_keys)
+    on conflict do nothing returning resource_key
+  ) select coalesce(array_agg(resource_key), '{}'::text[]) from inserted;
+$$;
+revoke all on function public.claim_calendar_notifications(text[]) from public;
+grant execute on function public.claim_calendar_notifications(text[]) to anon;
 alter table public.push_config enable row level security;
 drop policy if exists "push config read" on public.push_config;
 create policy "push config read" on public.push_config for select to anon using (true);

@@ -3,6 +3,7 @@ import webpush, { type PushSubscription } from "web-push";
 import { supabase } from "@/lib/supabase";
 import { decrypt, encrypt, endpointId, validEndpoint } from "@/lib/push-security";
 import { nameOf, type PersonId } from "@/lib/me";
+import { calendarClaims } from "@/lib/calendar-push-server";
 
 export const runtime = "nodejs";
 const person = (value: unknown): value is PersonId => value === "yeachan" || value === "daeun";
@@ -38,13 +39,17 @@ export async function POST(req: NextRequest) {
       if (error) throw error;
       return NextResponse.json({ ok: true });
     }
-    if (body.action !== "poke" || typeof body.id !== "string" || !/^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(body.id)) return NextResponse.json({}, { status: 400 });
+    if (body.action !== "calendar" && (body.action !== "poke" || typeof body.id !== "string" || !/^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(body.id))) return NextResponse.json({}, { status: 400 });
     const sender = body.person;
     const recipient: PersonId = sender === "yeachan" ? "daeun" : "yeachan";
+    const calendar = body.action === "calendar" ? await calendarClaims(sender, body.date, body.additions) : null;
+    if (calendar && !calendar.summary) return NextResponse.json({});
+    if (!calendar) {
     const { data: recorded, error } = await supabase.rpc("record_push_poke", { poke_id: body.id, poke_sender: sender, poke_recipient: recipient });
     if (error) throw error;
     if (recorded === "limited") return NextResponse.json({ message: "잠깐만요. 10초 뒤에 다시 찔러주세요." }, { status: 429 });
     if (recorded === "duplicate") return NextResponse.json({ message: "이미 저장된 찌르기예요. 중복 알림은 보내지 않았어요." });
+    }
     // 기록 저장과 푸시 결과를 분리한다. 알림 실패 후 재시도로 중복 기록을 만들지 않는다.
     try {
       const vapid = await keys();
@@ -56,7 +61,11 @@ export async function POST(req: NextRequest) {
         const saved = decrypt<Subscription>(row.payload);
         if (saved.person !== recipient || !validEndpoint(saved.subscription.endpoint)) throw new Error("Invalid subscription");
         try {
-          await webpush.sendNotification(saved.subscription, JSON.stringify({ id: body.id, body: `${nickname}님이 나를 찔렀어요. 지금 내 생각 중인가 봐요!` }), {
+          await webpush.sendNotification(saved.subscription, JSON.stringify({
+            id: calendar ? `calendar-${crypto.randomUUID()}` : body.id,
+            url: calendar ? `/calendar?date=${calendar.date}` : "/poke",
+            body: calendar ? `${nickname}님이 ${calendar.date}에 ${calendar.summary} 기록을 추가했어요.` : `${nickname}님이 나를 찔렀어요. 지금 내 생각 중인가 봐요!`,
+          }), {
             vapidDetails: { ...vapid, subject: "https://ddunddi.yeachan.cloud" }, TTL: 3600, urgency: "high", timeout: 5000,
           });
         } catch (e) {
@@ -66,7 +75,8 @@ export async function POST(req: NextRequest) {
         }
       }));
       const sent = results.filter((r) => r.status === "fulfilled").length;
+      if (calendar) return NextResponse.json({ message: sent || !rows?.length ? undefined : "기록은 저장했지만 상대 알림 전송에 실패했어요." });
       return NextResponse.json({ message: sent ? "찌르기를 저장하고 상대 기기에 알림을 보냈어요." : rows?.length ? "찌르기는 저장했지만 알림을 보내지 못했어요. 상대의 알림 설정을 확인해주세요." : "찌르기를 저장했어요. 상대가 알림 받기를 켜면 푸시 알림도 보낼 수 있어요." });
-    } catch { return NextResponse.json({ message: "찌르기는 저장했지만 알림 전송에 실패했어요." }); }
+    } catch { return NextResponse.json({ message: calendar ? "기록은 저장했지만 상대 알림 전송에 실패했어요." : "찌르기는 저장했지만 알림 전송에 실패했어요." }); }
   } catch { return NextResponse.json({ message: "처리하지 못했어요. 잠시 후 다시 시도해주세요." }, { status: 503 }); }
 }
