@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush, { type PushSubscription } from "web-push";
 import { supabase } from "@/lib/supabase";
-import { decrypt, encrypt, endpointId, validEndpoint, validSession } from "@/lib/push-security";
+import { decrypt, encrypt, endpointId, validEndpoint } from "@/lib/push-security";
 import { nameOf, type PersonId } from "@/lib/me";
 
 export const runtime = "nodejs";
@@ -13,17 +13,12 @@ async function keys() {
   if (error) throw error;
   return decrypt<Keys>(data.payload);
 }
-function authorized(req: NextRequest) {
-  return validSession(req.cookies.get("ddunddi-session")?.value ?? "");
-}
-export async function GET(req: NextRequest) {
-  if (!authorized(req)) return NextResponse.json({ message: "알림 사용을 위해 앱 비밀번호를 한 번 더 확인해주세요." }, { status: 401 });
+export async function GET() {
   try { return NextResponse.json({ publicKey: (await keys()).publicKey }, { headers: { "Cache-Control": "no-store" } }); }
   catch { return NextResponse.json({ message: "알림 서버를 준비 중이에요. 잠시 후 다시 시도해주세요." }, { status: 503 }); }
 }
 export async function POST(req: NextRequest) {
   if (req.headers.get("origin") !== req.nextUrl.origin) return NextResponse.json({}, { status: 403 });
-  if (!authorized(req)) return NextResponse.json({ message: "알림 사용을 위해 앱 비밀번호를 한 번 더 확인해주세요." }, { status: 401 });
   const raw = await req.text();
   if (raw.length > 12000) return NextResponse.json({}, { status: 413 });
   let body;

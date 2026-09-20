@@ -9,12 +9,9 @@ export default function PushSettings() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [key, setKey] = useState("");
-  const [password, setPassword] = useState("");
-  const [needsAuth, setNeedsAuth] = useState(false);
   async function refresh() {
     const response = await fetch("/api/push", { cache: "no-store" });
     const data = await response.json();
-    setNeedsAuth(response.status === 401);
     if (!response.ok) { setMessage(data.message); return; }
     setKey(data.publicKey); setMessage("");
     if ("serviceWorker" in navigator && "PushManager" in window) {
@@ -27,16 +24,6 @@ export default function PushSettings() {
     setSupported("serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext);
     refresh().catch(() => setMessage("알림 설정을 불러오지 못했어요. 다시 시도해주세요."));
   }, []);
-  async function authenticate(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true);
-    try {
-      const response = await fetch("/api/gate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-      setPassword("");
-      if (!response.ok) throw new Error("비밀번호가 맞지 않거나 서버에 연결하지 못했어요.");
-      await refresh();
-    } catch (e) { setMessage((e as Error).message); }
-    finally { setBusy(false); }
-  }
   async function toggle() {
     const me = readMe(); if (!me || busy) return;
     setBusy(true); setMessage("");
@@ -69,8 +56,8 @@ export default function PushSettings() {
     <h2 className="font-semibold">찌르기 알림</h2>
     <p className="mt-2 text-sm leading-relaxed text-app-muted">상대가 찌르면 이 기기에서 알림을 받아요. 서로 각자의 기기에서 켜주세요.</p>
     <p className="mt-2 text-xs leading-relaxed text-app-muted">아이폰·아이패드는 iOS 16.4 이상에서 Safari → 공유 → 홈 화면에 추가 후, 홈 화면의 앱을 열어 설정해주세요.</p>
-    {needsAuth ? <form onSubmit={authenticate} className="mt-4 space-y-3"><label className="block text-sm">알림 기능을 위한 비밀번호 확인<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 w-full rounded-xl border border-app-border px-3 py-2" /></label><button disabled={busy} className="rounded-xl bg-app-accent px-4 py-2 text-app-on-accent disabled:opacity-50">{busy ? "확인 중…" : "확인"}</button></form> : supported ? <button onClick={toggle} disabled={busy || !key} className="mt-4 rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-on-accent disabled:opacity-50">{busy ? "설정 중…" : enabled ? "이 기기 알림 끄기" : "이 기기 알림 받기"}</button> : <p className="mt-4 text-sm">이 브라우저에서는 알림을 사용할 수 없어요. 지원되는 브라우저나 홈 화면 앱에서 열어주세요.</p>}
+    {supported ? <button onClick={toggle} disabled={busy || !key} className="mt-4 rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-on-accent disabled:opacity-50">{busy ? "설정 중…" : enabled ? "이 기기 알림 끄기" : "이 기기 알림 받기"}</button> : <p className="mt-4 text-sm">이 브라우저에서는 알림을 사용할 수 없어요. 지원되는 브라우저나 홈 화면 앱에서 열어주세요.</p>}
     {message && <p role="status" className="mt-3 text-sm">{message}</p>}
-    {!key && !needsAuth && <button onClick={() => refresh().catch(() => setMessage("다시 불러오지 못했어요."))} className="mt-3 text-sm underline">다시 불러오기</button>}
+    {!key && <button onClick={() => refresh().catch(() => setMessage("다시 불러오지 못했어요."))} className="mt-3 text-sm underline">다시 불러오기</button>}
   </section>;
 }

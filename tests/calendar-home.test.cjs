@@ -43,7 +43,7 @@ test("푸시 endpoint는 내부망과 위장 도메인을 거부한다", () => {
   for (const endpoint of ["https://fcm.googleapis.com/x", "https://web.push.apple.com/x", "https://updates.push.services.mozilla.com/x"]) assert.equal(pushSecurity.validEndpoint(endpoint), true);
 });
 
-test("찌르기 API는 인증·중복·쿨다운을 검사하고 푸시 실패와 기록 성공을 구분한다", async () => {
+test("찌르기 API는 추가 로그인 없이 동작하며 외부 출처·중복·쿨다운을 검사한다", async () => {
   const { NextRequest } = require("next/server");
   const previous = process.env.GATE_PASSWORD;
   process.env.GATE_PASSWORD = "test-only-push-secret";
@@ -68,9 +68,9 @@ test("찌르기 API는 인증·중복·쿨다운을 검사하고 푸시 실패�
   });
   const request = (cookie = true, origin = "https://app.test") => new NextRequest("https://app.test/api/push", { method: "POST", headers: { origin, "Content-Type": "application/json", ...(cookie ? { cookie: `ddunddi-session=${pushSecurity.sessionToken()}` } : {}) }, body: JSON.stringify({ action: "poke", person: "yeachan", id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }) });
   try {
-    assert.equal((await route.POST(request(false))).status, 401);
+    assert.equal((await route.GET()).status, 200);
     assert.equal((await route.POST(request(true, "https://evil.test"))).status, 403);
-    recorded = "duplicate"; await route.POST(request()); assert.equal(sendCount, 0);
+    recorded = "duplicate"; await route.POST(request(false)); assert.equal(sendCount, 0);
     recorded = "limited"; assert.equal((await route.POST(request())).status, 429); assert.equal(sendCount, 0);
     recorded = "created"; const success = await route.POST(request()); assert.match((await success.json()).message, /알림을 보냈/); assert.equal(sendCount, 1);
     expired = true; const failure = await route.POST(request()); assert.equal(failure.status, 200); assert.match((await failure.json()).message, /저장했지만/); assert.equal(deleted, true);
