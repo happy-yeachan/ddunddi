@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { GATE_KEY, readMe } from "@/lib/me";
 import ThemeProvider from "@/components/ThemeProvider";
+import PushWorker from "@/components/PushWorker";
 
 const TABS = [
   { href: "/us", label: "우리" },
@@ -32,6 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
       <ThemeProvider />
+      <PushWorker />
       {children}
 
       <nav className="fixed inset-x-0 bottom-0 border-t border-app-border bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">

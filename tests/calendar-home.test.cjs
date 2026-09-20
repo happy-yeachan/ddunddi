@@ -22,6 +22,27 @@ const dates = loadTs("lib/calendar-dates.ts");
 const theme = loadTs("lib/theme.ts");
 const pushSecurity = loadTs("lib/push-security.ts");
 
+test("알림 클릭은 열린 앱을 활성화하고 종료된 창이면 새 앱 창을 연다", async () => {
+  const { runInNewContext } = require("node:vm");
+  for (const mode of ["existing", "closed", "focus-failed", "navigate-failed", "null-navigation"]) {
+    const handlers = {}, calls = [];
+    const client = {
+      url: "https://app.test/us",
+      async focus() { calls.push("focus"); if (mode === "focus-failed") throw new Error("closed"); return this; },
+      async navigate(url) { assert.equal(url, "https://app.test/poke"); calls.push("navigate"); if (mode === "navigate-failed") throw new Error("closed"); return mode === "null-navigation" ? null : this; },
+    };
+    runInNewContext(readFileSync(resolve(__dirname, "../public/sw.js"), "utf8"), { URL, self: {
+      location: { origin: "https://app.test" }, addEventListener: (event, handler) => { handlers[event] = handler; },
+      clients: { matchAll: async () => mode === "closed" ? [] : [client], openWindow: async (url) => { assert.equal(url, "https://app.test/poke"); calls.push("open"); return { focus: async () => calls.push("new-focus") }; } },
+    } });
+    let pending;
+    handlers.notificationclick({ notification: { close: () => calls.push("close") }, waitUntil: (promise) => { pending = promise; } });
+    await pending;
+    if (mode === "existing") assert.deepEqual(calls, ["close", "focus", "navigate"]);
+    else assert.ok(calls.includes("open"), mode);
+  }
+});
+
 test("푸시 세션은 만료와 변조를 거부하고 구독 암호문은 인증한다", () => {
   const previous = process.env.GATE_PASSWORD;
   process.env.GATE_PASSWORD = "test-only-push-secret";
